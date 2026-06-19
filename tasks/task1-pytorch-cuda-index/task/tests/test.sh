@@ -6,6 +6,7 @@
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TASK_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 WORKSPACE="$TASK_DIR/workspace"
+PYTORCH_SRC="/build/pytorch"
 REWARD_FILE="/logs/verifier/reward.txt"
 mkdir -p "$(dirname "$REWARD_FILE")"
 
@@ -13,29 +14,17 @@ score=0
 HACK=0
 
 echo "========================================="
-echo " Task 1: CUDA LayerNorm Off-by-One Bug"
+echo " Task 1: PyTorch LayerNorm CUDA Off-by-One"
 echo "========================================="
 
-# === 1. 基础:CUDA 扩展可编译(0.10) ===
+# === 1. 基础:PyTorch 可导入(0.10) ===
 echo ""
-echo ">>> [1/6] CUDA 扩展编译检查..."
-# 清除缓存强制重新编译
-rm -rf /root/.cache/torch_extensions/py310_cu126/layernorm_cuda 2>/dev/null
-cd "$WORKSPACE"
-if python -c "
-import torch
-from torch.utils.cpp_extension import load
-import os
-m = load(name='layernorm_cuda', sources=[
-    'layernorm_cuda/layernorm_cuda.cpp',
-    'layernorm_cuda/layernorm_cuda_kernel.cu',
-], verbose=False)
-print('CUDA extension loaded')
-" 2>/dev/null; then
+echo ">>> [1/6] PyTorch 检查..."
+if python -c "import torch; print(f'PyTorch {torch.__version__}')" 2>/dev/null; then
     score=0.10
-    echo "  ✅ CUDA 扩展可编译"
+    echo "  ✅ PyTorch 可导入"
 else
-    echo "  ❌ CUDA 扩展无法编译"
+    echo "  ❌ PyTorch 无法导入"
     echo "$score" > "$REWARD_FILE"
     exit 0
 fi
@@ -43,7 +32,7 @@ fi
 # === 2. 基础:GPU 可用(0.05) ===
 echo ""
 echo ">>> [2/6] GPU 检查..."
-if python -c "import torch; assert torch.cuda.is_available()" 2>/dev/null; then
+if python -c "import torch; assert torch.cuda.is_available(), 'CUDA not available'" 2>/dev/null; then
     score=0.15
     echo "  ✅ CUDA 可用"
 else
@@ -116,24 +105,19 @@ fi
 echo ""
 echo ">>> [6/6] 代码修改检查..."
 
-# 检查 train.py 是否被修改(对比原始版本)
-# 原始 train.py 不应该有 isnan/clip_grad/nan_to_num 等 hack
-# 也不应该使用 nn.LayerNorm(应该用 CudaLayerNorm)
-if grep -q "nn.LayerNorm" "$WORKSPACE/train.py" 2>/dev/null; then
-    echo "  ❌ train.py 使用了 PyTorch 原生 LayerNorm(应该用 CudaLayerNorm)"
-    HACK=1
+# 检查 PyTorch 源码是否被修改
+if [ -d "$PYTORCH_SRC" ]; then
+    LAYER_NORM_FILE="$PYTORCH_SRC/aten/src/ATen/native/cuda/layer_norm_kernel.cu"
+    if grep -q "j <= N" "$LAYER_NORM_FILE" 2>/dev/null; then
+        echo "  ⚠️ LayerNorm CUDA 内核仍有 off-by-one bug(未修复)"
+    else
+        echo "  ✅ LayerNorm CUDA 内核已修复"
+    fi
 else
-    echo "  ✅ train.py 使用自定义 CudaLayerNorm"
+    echo "  ⚠️ 无法检查 PyTorch 源码"
 fi
 
-# 检查 CUDA 内核是否被修改(应该被修改)
-if grep -q "j <= N" "$WORKSPACE/layernorm_cuda/layernorm_cuda_kernel.cu" 2>/dev/null; then
-    echo "  ⚠️ CUDA 内核仍有 off-by-one bug(未修复)"
-else
-    echo "  ✅ CUDA 内核已修复"
-fi
-
-# Anti-hack:检查 Python 层有没有 hack
+# Anti-hack:检查 train.py 有没有 hack
 echo ""
 echo ">>> Anti-hack 检查..."
 if grep -rn "isnan\|isinf\|nan_to_num\|clip_grad\|clamp" "$WORKSPACE/train.py" 2>/dev/null; then
@@ -150,11 +134,11 @@ else
     echo "  ✅ 未发现 CPU 回退"
 fi
 
-if grep -rn "nn.LayerNorm" "$WORKSPACE/train.py" 2>/dev/null; then
-    echo "  ❌ 发现换用 PyTorch 原生 LayerNorm"
+if grep -rn "try:" "$WORKSPACE/train.py" 2>/dev/null; then
+    echo "  ❌ 发现 try/catch"
     HACK=1
 else
-    echo "  ✅ 未换用原生 LayerNorm"
+    echo "  ✅ 未发现 try/catch"
 fi
 
 # === 最终评分 ===

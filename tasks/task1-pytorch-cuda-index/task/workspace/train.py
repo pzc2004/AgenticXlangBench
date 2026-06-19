@@ -6,38 +6,8 @@
 
 import argparse
 import time
-import os
 import torch
 import torch.nn as nn
-
-# 加载自定义 CUDA LayerNorm 扩展
-def load_layernorm_cuda():
-    from torch.utils.cpp_extension import load
-    src_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'layernorm_cuda')
-    return load(
-        name='layernorm_cuda',
-        sources=[
-            os.path.join(src_dir, 'layernorm_cuda.cpp'),
-            os.path.join(src_dir, 'layernorm_cuda_kernel.cu'),
-        ],
-        verbose=False
-    )
-
-_layernorm_module = None
-
-class CudaLayerNorm(nn.Module):
-    """使用自定义 CUDA kernel 的 LayerNorm(有 bug)"""
-    def __init__(self, normalized_shape, eps=1e-5):
-        super().__init__()
-        self.weight = nn.Parameter(torch.ones(normalized_shape))
-        self.bias = nn.Parameter(torch.zeros(normalized_shape))
-        self.eps = eps
-
-    def forward(self, x):
-        global _layernorm_module
-        if _layernorm_module is None:
-            _layernorm_module = load_layernorm_cuda()
-        return _layernorm_module.forward(x, self.weight, self.bias, self.eps)
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -50,16 +20,16 @@ def parse_args():
     return parser.parse_args()
 
 def make_model(hidden, device):
-    """创建一个使用 CudaLayerNorm + ReLU 的简单模型"""
+    """创建一个使用 LayerNorm + ReLU 的简单模型"""
     return nn.Sequential(
         nn.Linear(256, hidden),
-        CudaLayerNorm(hidden),  # ← 这个 op 的 CUDA kernel 有 bug
+        nn.LayerNorm(hidden),  # ← 这个 op 的 CUDA forward kernel 有 bug
         nn.ReLU(),
         nn.Linear(hidden, hidden),
-        CudaLayerNorm(hidden),  # ← 多调几次,增加触发概率
+        nn.LayerNorm(hidden),  # ← 多调几次,增加触发概率
         nn.ReLU(),
         nn.Linear(hidden, hidden),
-        CudaLayerNorm(hidden),
+        nn.LayerNorm(hidden),
         nn.ReLU(),
         nn.Linear(hidden, 10),
     ).to(device)
@@ -95,7 +65,6 @@ def main():
         if torch.isnan(loss) or torch.isinf(loss):
             nan_detected = True
             print(f"[step {step}] NaN/Inf detected! loss={loss.item()}")
-            # 继续跑几步看传播
             if step > args.steps - 5:
                 break
 
@@ -110,7 +79,6 @@ def main():
         if step % 20 == 0 or nan_detected:
             print(f"step={step:4d}  loss={loss.item():.6f}  time={t1-t0:.4f}s")
 
-    # 最终报告
     final_loss = losses[-1] if losses else float('nan')
     print(f"\nfinal_loss {final_loss}")
     print(f"nan_detected {nan_detected}")
