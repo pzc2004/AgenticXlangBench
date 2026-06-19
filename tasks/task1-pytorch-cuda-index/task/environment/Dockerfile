@@ -40,6 +40,9 @@ RUN python /build/inject_bug.py
 # 验证真 bug 已注入
 RUN grep -n "j <= N" aten/src/ATen/native/cuda/layer_norm_kernel.cu
 
+# 删除注入脚本(防止 agent 读到)
+RUN rm /build/inject_bug.py
+
 # 编译 PyTorch(最小化编译选项)
 ENV MAX_JOBS=32
 ENV USE_CUDA=1
