@@ -76,6 +76,18 @@ cd /build/pytorch && python setup.py develop
 - **训练验证**:1-2 分钟(100 iteration)
 - **磁盘**:~30GB(PyTorch 源码 + 编译产物)
 
+## 关于使用 SSH
+
+Dockerfile 中所有 git 操作(clone / submodule)均使用 SSH(`git@github.com:...`)而非 HTTPS。
+原因:HTTPS 在 Docker build 过程中**经常超时或连接中断**,尤其在 clone 大型仓库(PyTorch ~2GB)和初始化子模块时。
+SSH 连接更稳定,适合长时间的 Docker build。
+
+构建命令:
+```bash
+eval $(ssh-agent) && ssh-add ~/.ssh/id_rsa
+DOCKER_BUILDKIT=1 docker build --ssh default -t task1 -f Dockerfile .
+```
+
 ---
 
 ## 开发踩坑记录
@@ -136,3 +148,5 @@ ENV BUILD_CAFFE2=0
 | **子模块选择性初始化** | 只拉必要的,跳过 ideep/kineto 等 |
 | **编译选项最小化** | 禁用不需要的组件,减少编译时间 |
 | **sed 注入 bug** | 简单、可复现、易于 oracle 撤销 |
+| **git 使用 SSH** | 比 HTTPS 更稳定,避免 Docker build 时超时 |
+| **inject_bug.py 放在 solution/** | 不放在 workspace/,防止 agent 直接读到答案 |
