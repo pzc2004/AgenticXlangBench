@@ -88,7 +88,7 @@ taskN-<name>/
 ## 5. 使用方式
 
 ```bash
-cd cross-lang-tasks/task1-pytorch-cuda-index
+cd tasks/task1-pytorch-cuda-index
 
 # 单次跑(用 Claude Code)
 ./run.sh claude-sonnet-4-6 10

@@ -45,7 +45,7 @@ git clone git@github.com:pzc2004/AgenticXlangBench.git
 cd AgenticXlangBench
 
 # 跑单个任务(用 Claude Code)
-cd task1-pytorch-cuda-index
+cd tasks/task1-pytorch-cuda-index
 ./run.sh claude-sonnet-4-6 10
 
 # 校准难度(3 模型 × 3 seed)
@@ -58,17 +58,19 @@ cd task1-pytorch-cuda-index
 AgenticXlangBench/
 ├── README.md                          ← 本文件
 ├── OVERVIEW.md                        ← 详细设计文档
-├── taskN-<name>/
-│   ├── README.md                      ← 该任务的设计思路
-│   ├── run.sh                         ← 单次运行
-│   ├── calibrate.sh                   ← 多模型校准
-│   ├── trajectories/                  ← 轨迹存储(运行时生成)
-│   └── task/                          ← 任务本身(harbor 格式)
-│       ├── task.toml                  ← 任务元数据
-│       ├── instruction.md             ← 发给 agent 的 prompt
-│       ├── environment/Dockerfile     ← 运行环境
-│       ├── tests/test.sh              ← 判题脚本
-│       └── solution/solve.sh          ← Oracle 参考解
+├── LICENSE                            ← MIT 许可证
+└── tasks/                             ← 15 道任务
+    └── taskN-<name>/
+        ├── README.md                  ← 该任务的设计思路
+        ├── run.sh                     ← 单次运行
+        ├── calibrate.sh               ← 多模型校准
+        ├── trajectories/              ← 轨迹存储(运行时生成)
+        └── task/                      ← 任务本身(harbor 格式)
+            ├── task.toml              ← 任务元数据
+            ├── instruction.md         ← 发给 agent 的 prompt
+            ├── environment/Dockerfile ← 运行环境
+            ├── tests/test.sh          ← 判题脚本
+            └── solution/solve.sh      ← Oracle 参考解
 ```
 
 `task/` 目录是标准 harbor 格式,可独立使用。`run.sh` / `calibrate.sh` / `trajectories/` 是评测基础设施。
@@ -113,6 +115,12 @@ calibrate.sh 汇总:平均分 / 成功率 / 判定(太简单 / 太难 / 合适)
 
 - [ExploitBench](https://github.com/exploitbench/exploitbench) — V8 JavaScript 引擎漏洞利用评测基准(本项目的灵感来源)
 - [harbor](https://github.com/harbor-framework/harbor) — 任务格式框架
+
+## 开发工具
+
+本项目使用 **Claude Code** 作为 AI 编程助手，接入以下模型：
+
+- **MiMo-V2.5-Pro**
 
 ## 许可证
 

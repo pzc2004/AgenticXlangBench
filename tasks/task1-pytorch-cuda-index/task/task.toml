@@ -1,0 +1,21 @@
+version = "1.0"
+
+[metadata]
+author = "pzc2004"
+difficulty = "hard"
+category = "cross-lang-bugfix"
+tags = ["cuda", "layernorm", "nan", "off-by-one", "custom-kernel"]
+
+[environment]
+gpu = true
+gpu_memory_min = "4GB"
+disk_min = "1GB"
+ram_min = "8GB"
+
+[verifier]
+timeout = 300
+test_script = "tests/test.sh"
+
+[agent]
+timeout = 3600
+max_turns = 200
