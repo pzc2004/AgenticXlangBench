@@ -2,8 +2,8 @@
 """
 注入 1 个真 bug + 19 个诱饵到 PyTorch CUDA 源码
 
-真 bug: LayerNorm forward kernel 中 rsqrt(wd.sigma2 + eps) → rsqrt(wd.sigma2)
-        当方差 = 0 时,rsqrt(0) = Inf → 0 * Inf = NaN
+真 bug: LayerNorm forward kernel 中 rsqrt(wd.sigma2 + eps) → rsqrt(-wd.sigma2 + eps)
+        负号 typo:当 var > eps 时,参数为负 → rsqrt(负数) = NaN
 诱饵:   19 个 CUDA kernel 中插入可疑注释/宏(不影响编译)
 """
 
@@ -14,7 +14,8 @@ PYTORCH_DIR = os.environ.get("PYTORCH_DIR", "/build/pytorch")
 CUDA_DIR = os.path.join(PYTORCH_DIR, "aten/src/ATen/native/cuda")
 
 def inject_real_bug():
-    """注入真 bug: 去掉 LayerNorm forward kernel 中 rsqrt 的 eps 保护
+    """注入真 bug: rsqrt(wd.sigma2 + eps) → rsqrt(-wd.sigma2 + eps)
+    负号 typo:当 var > eps 时,参数为负 → rsqrt(负数) = NaN
     先恢复干净版(如果源码已被修改),再注入 bug。
     """
     filepath = os.path.join(CUDA_DIR, "layer_norm_kernel.cu")
@@ -26,15 +27,19 @@ def inject_real_bug():
         content = f.read()
 
     # 先恢复干净版(如果已经被改成 buggy 版)
-    buggy = "c10::cuda::compat::rsqrt(wd.sigma2)"
     clean = "c10::cuda::compat::rsqrt(wd.sigma2 + eps)"
-    if clean not in content and buggy in content:
-        content = content.replace(buggy, clean, 1)
-        print("  ℹ️ 恢复干净版 rsqrt(wd.sigma2 + eps)")
+    buggy_v1 = "c10::cuda::compat::rsqrt(wd.sigma2)"      # 旧 bug(去 eps)
+    buggy_v2 = "c10::cuda::compat::rsqrt(-wd.sigma2 + eps)" # 新 bug(负号)
 
-    # 再注入 bug
-    old = "c10::cuda::compat::rsqrt(wd.sigma2 + eps)"
-    new = "c10::cuda::compat::rsqrt(wd.sigma2)"
+    if clean not in content:
+        # 恢复干净版
+        content = content.replace(buggy_v2, clean, 1)
+        content = content.replace(buggy_v1, clean, 1)
+        print("  ℹ️ 恢复干净版")
+
+    # 注入新 bug: 负号 typo
+    old = clean
+    new = "c10::cuda::compat::rsqrt(-wd.sigma2 + eps)"
 
     if old not in content:
         print(f"❌ 找不到目标代码: {old}")
@@ -44,7 +49,8 @@ def inject_real_bug():
     with open(filepath, 'w') as f:
         f.write(content)
 
-    print(f"  ✅ 真 bug: layer_norm_kernel.cu (rsqrt(wd.sigma2 + eps) → rsqrt(wd.sigma2))")
+    print(f"  ✅ 真 bug: layer_norm_kernel.cu (rsqrt(wd.sigma2 + eps) → rsqrt(-wd.sigma2 + eps))")
+    print(f"     原因:负号 typo → 当 var > eps 时 rsqrt(负数) = NaN")
     return True
 
 def inject_decoys():

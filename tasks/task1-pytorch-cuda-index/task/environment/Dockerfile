@@ -43,6 +43,8 @@ COPY tasks/task1-pytorch-cuda-index/task/solution/inject_bug.py /tmp/inject_bug.
 ENV PYTORCH_DIR=/build/pytorch
 RUN python /tmp/inject_bug.py && \
     rm /tmp/inject_bug.py && \
+    echo "=== 验证 bug 注入 ===" && \
+    grep -n "rsqrt(-wd" /build/pytorch/aten/src/ATen/native/cuda/layer_norm_kernel.cu && \
     cd /build/pytorch && \
     git config user.email "build@local" && \
     git config user.name "build" && \

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-训练脚本 — 图像分类模型,使用多种 PyTorch op
+图像分类训练脚本
 用法: python train.py [--steps N] [--seed S] [--device D] [--profile]
 """
 
@@ -8,7 +8,7 @@ import argparse
 import time
 import torch
 import torch.nn as nn
-from model import MultiOpModel
+from model import ImageClassifier
 
 
 def parse_args():
@@ -19,23 +19,6 @@ def parse_args():
     parser.add_argument("--batch_size", type=int, default=32, help="批次大小")
     parser.add_argument("--profile", action="store_true", help="输出性能统计")
     return parser.parse_args()
-
-
-# === 零方差注入 pre-hook ===
-# 每隔 N 步,将 LayerNorm 的输入替换为零方差数据(所有特征相同值)。
-# 替换后的输入直接送入 CUDA kernel 处理。
-_step_counter = [0]
-
-def _zero_variance_pre_hook(module, input):
-    _step_counter[0] += 1
-    if _step_counter[0] % 40 == 0 and _step_counter[0] > 0:
-        x = input[0]
-        # 将每个样本的所有特征设为相同值 → 方差 = 0
-        # LayerNorm CUDA kernel 收到这个输入后,rsqrt(0) = Inf → NaN
-        val = torch.rand(x.shape[0], 1, device=x.device)
-        uniform = val.expand_as(x).clone()
-        return (uniform,)  # 修改后的输入,直接送 CUDA kernel
-    return None  # 不修改
 
 
 def make_batch(batch_size, device):
@@ -52,13 +35,7 @@ def main():
         torch.cuda.manual_seed(args.seed)
 
     device = torch.device(args.device if torch.cuda.is_available() else "cpu")
-    model = MultiOpModel().to(device)
-
-    # 注册 pre-hook 到所有 LayerNorm 层(在 CUDA kernel 执行前修改输入)
-    for module in model.modules():
-        if isinstance(module, nn.LayerNorm):
-            module.register_forward_pre_hook(_zero_variance_pre_hook)
-
+    model = ImageClassifier().to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
     loss_fn = nn.CrossEntropyLoss()
 

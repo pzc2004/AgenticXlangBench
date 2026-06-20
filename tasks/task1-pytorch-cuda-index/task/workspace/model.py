@@ -1,48 +1,53 @@
 """
-多 op 模型定义 —— 包含 10+ 种 PyTorch op
-Agent 需要读这个文件才能知道模型用了哪些 op。
-LayerNorm 藏在中间,不在第一层。
+图像分类模型定义
 """
 
+import torch
 import torch.nn as nn
 
 
-class MultiOpModel(nn.Module):
-    """使用 Conv2d + BatchNorm + ReLU + GELU + MaxPool + Linear + LayerNorm + Dropout"""
+class FeatureNorm(nn.Module):
+    """特征归一化层 —— 对最后一个维度做归一化 + 可学习的缩放和偏移。
+    内部用 PyTorch 的 F.layer_norm 实现。
+    """
+    def __init__(self, normalized_shape, eps=1e-5):
+        super().__init__()
+        self.weight = nn.Parameter(torch.ones(normalized_shape))
+        self.bias = nn.Parameter(torch.zeros(normalized_shape))
+        self.eps = eps
+        self.normalized_shape = (normalized_shape,)
+
+    def forward(self, x):
+        return torch.nn.functional.layer_norm(x, self.normalized_shape, self.weight, self.bias, self.eps)
+
+
+class ImageClassifier(nn.Module):
+    """多层图像分类器"""
 
     def __init__(self):
         super().__init__()
-        # Conv2d + BatchNorm + ReLU
-        self.conv1 = nn.Conv2d(3, 32, 3, padding=1)
-        self.bn1 = nn.BatchNorm2d(32)
-        self.relu1 = nn.ReLU()
-
-        # Conv2d + GELU
-        self.conv2 = nn.Conv2d(32, 64, 3, padding=1)
-        self.gelu = nn.GELU()
-
-        # MaxPool
-        self.pool = nn.MaxPool2d(2)
-
-        # Flatten → Linear → LayerNorm
+        self.features = nn.Sequential(
+            nn.Conv2d(3, 32, 3, padding=1),
+            nn.BatchNorm2d(32),
+            nn.ReLU(),
+            nn.Conv2d(32, 64, 3, padding=1),
+            nn.GELU(),
+            nn.MaxPool2d(2),
+        )
         self.flatten = nn.Flatten()
-        self.fc1 = nn.Linear(64 * 16 * 16, 512)
-        self.ln1 = nn.LayerNorm(512)       # ← bug 触发点(第 8 层)
-
-        # Linear → LayerNorm → Dropout
-        self.fc2 = nn.Linear(512, 256)
-        self.ln2 = nn.LayerNorm(256)       # ← 第 12 层
-        self.dropout = nn.Dropout(0.1)
-
-        # Linear
-        self.fc3 = nn.Linear(256, 10)
+        self.classifier = nn.Sequential(
+            nn.Linear(64 * 16 * 16, 512),
+            FeatureNorm(512),
+            nn.ReLU(),
+            nn.Dropout(0.1),
+            nn.Linear(512, 256),
+            FeatureNorm(256),
+            nn.Dropout(0.1),
+            nn.Linear(256, 10),
+        )
 
     def forward(self, x):
-        x = self.relu1(self.bn1(self.conv1(x)))
-        x = self.gelu(self.conv2(x))
-        x = self.pool(x)
+        x = self.features(x)
         x = self.flatten(x)
-        x = self.ln1(self.fc1(x))
-        x = self.dropout(self.ln2(self.fc2(x)))
-        x = self.fc3(x)
+        x = self.classifier(x)
         return x

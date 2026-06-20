@@ -1,20 +1,27 @@
 #!/bin/bash
-# Oracle:恢复 forward kernel 中 rsqrt 的 eps 保护
+# Oracle:恢复正确的 rsqrt 公式
 set -e
 
 PYTORCH_SRC="/build/pytorch"
 TARGET="$PYTORCH_SRC/aten/src/ATen/native/cuda/layer_norm_kernel.cu"
 
-echo ">>> 修复 rsqrt 缺少 eps 保护的 bug..."
+echo ">>> 恢复 rsqrt 公式..."
 
-# 恢复 eps 保护: rsqrt(wd.sigma2) → rsqrt(wd.sigma2 + eps)
+# 恢复: rsqrt(-wd.sigma2 + eps) → rsqrt(wd.sigma2 + eps)
+# 也处理旧版 bug: rsqrt(wd.sigma2) → rsqrt(wd.sigma2 + eps)
+sed -i 's/rsqrt(-wd\.sigma2 + eps)/rsqrt(wd.sigma2 + eps)/' "$TARGET"
 sed -i 's/rsqrt(wd\.sigma2)/rsqrt(wd.sigma2 + eps)/' "$TARGET"
 
 # 验证修复
+if grep -q "rsqrt(-wd" "$TARGET"; then
+    echo "❌ 修复失败:仍有负号 bug"
+    exit 1
+fi
+
 if grep -q "rsqrt(wd.sigma2 + eps)" "$TARGET"; then
     echo "✅ Bug 已修复"
 else
-    echo "❌ 修复失败"
+    echo "❌ 修复失败:找不到正确的 rsqrt"
     exit 1
 fi
 
@@ -22,8 +29,6 @@ fi
 echo ">>> 增量编译..."
 cd "$PYTORCH_SRC/build"
 ninja -j32 lib/libtorch_cuda.so 2>&1 | tail -3
-
-# 复制到 site-packages
 cp lib/libtorch_cuda.so /usr/local/lib/python3.12/dist-packages/torch/lib/libtorch_cuda.so
 
 echo ">>> 验证修复..."

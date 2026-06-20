@@ -111,6 +111,18 @@ calibrate.sh 汇总:平均分 / 成功率 / 判定(太简单 / 太难 / 合适)
 - 成功率 >60% → 淘汰或加难度
 - 成功率 <30% → 淘汰或加提示
 
+## Claude Code Skills
+
+本项目包含 Claude Code skills,用于自动化任务生成和校准:
+
+| Skill | 用途 | 用法 |
+|---|---|---|
+| `/generate-task` | 生成一道跨语言 bug-fix 评测题 | `/generate-task --cve CVE-2024-xxxx --framework pytorch` |
+| `/calibrate-task` | 校准一道题的难度 | `/calibrate-task --task-dir tasks/taskN-xxx --runs 3` |
+| `/select-tasks` | 从 N 道题里选最优 M 道 | `/select-tasks --n 15 --m 10` |
+
+详见 `.claude/skills/` 目录。
+
 ## 相关项目
 
 - [ExploitBench](https://github.com/exploitbench/exploitbench) — V8 JavaScript 引擎漏洞利用评测基准(本项目的灵感来源)

@@ -88,7 +88,10 @@ bash /task/tests/test.sh
 # task/workspace → /workspace (train.py)
 # task/          → /task (instruction.md, test.sh, solution/)
 # trajectories   → /trajectories (轨迹输出,不进 /workspace 避免只读冲突)
-DOCKER_ARGS="--rm --gpus all
+# 注意:不用 --rm,保留容器以便 docker commit 保存 Kimi 的修复
+CONTAINER_NAME="task1_$(date +%s)"
+SNAPSHOT_IMAGE="task1_snapshot_$(date +%s)"
+DOCKER_ARGS="--name $CONTAINER_NAME --gpus all
   -v $TASK_DIR/workspace:/workspace:ro
   -v $TASK_DIR:/task:ro
   -v $TRAJ_DIR:/trajectories
@@ -107,15 +110,23 @@ docker run $DOCKER_ARGS \
     2>"$TRAJ_DIR/stderr.log" \
     | grep '^{.*}$' > "$TRAJ_DIR/trajectory.jsonl" || true
 
-# [2/3] 最终测试
-echo ">>> [2/3] Kimi Code 结束,运行最终测试..."
+# [2/3] 保存 Kimi 的修复,在快照镜像里跑 test.sh
+echo ">>> [2/3] Kimi Code 结束,保存修复状态..."
+docker commit "$CONTAINER_NAME" "$SNAPSHOT_IMAGE" > /dev/null 2>&1
+docker rm -f "$CONTAINER_NAME" > /dev/null 2>&1
+
+echo ">>> 运行测试..."
 docker run --rm --gpus all \
-  -v "$TASK_DIR:/workspace/task:ro" \
-  task1 \
+  -v "$TASK_DIR/workspace:/workspace:ro" \
+  -v "$TASK_DIR:/task:ro" \
+  "$SNAPSHOT_IMAGE" \
   bash -c "
-    bash /workspace/task/tests/test.sh 2>/dev/null || true
+    bash /task/tests/test.sh 2>/dev/null || true
     cat /logs/verifier/reward.txt 2>/dev/null || echo '0.0'
   " > "$TRAJ_DIR/reward.txt" 2>/dev/null || true
+
+# 清理快照镜像
+docker rmi "$SNAPSHOT_IMAGE" > /dev/null 2>&1 || true
 
 # [3/3] 汇总
 REWARD=$(tail -1 "$TRAJ_DIR/reward.txt" 2>/dev/null | tr -d '[:space:]')

@@ -3,7 +3,7 @@
 ## 背景
 
 我们使用了一个从源码编译的 PyTorch 2.5.0(源码在 `/build/pytorch/`)。
-在训练一个简单模型时,loss 变成 NaN。
+在训练一个图像分类模型时,loss 变成 NaN。
 
 ## Bug 现象
 
@@ -11,7 +11,7 @@
 
 ```bash
 cd /workspace
-python train.py --steps 200 --seed 42 --device cuda
+python train.py --steps 100 --seed 42 --device cuda
 ```
 
 预期:loss 正常下降。
@@ -35,25 +35,27 @@ python train.py --steps 200 --seed 42 --device cuda
    ninja -j32 lib/libtorch_cuda.so
    cp lib/libtorch_cuda.so /usr/local/lib/python3.12/dist-packages/torch/lib/
    ```
-5. **验证修复**:运行测试确认 NaN 消失
+5. **验证修复**:运行测试确认修复成功
    ```bash
    bash /task/tests/test.sh
    ```
+6. **检查分数**:测试会输出 0-1 的分数。**分数 ≥ 0.6 才算通过。如果分数 < 0.6,说明修复不正确,请继续排查。**
 
 ## 约束条件
 
 - **只允许修改 C++/CUDA 文件**(`.cu` / `.cpp` / `.h`),不允许修改 Python 文件
-- **修改行数不超过 10 行**
 - **不允许**:
   - 在训练脚本中加 NaN 检查 / 梯度裁剪 / clamp
   - 强制使用 CPU
   - 加 try/catch
   - 修改训练参数
+  - 修改 model.py 或 train.py
 
 ## 文件说明
 
 - `/workspace/train.py` — 训练脚本
-- `/task/tests/test.sh` — 测试脚本(跑完后输出分数)
+- `/workspace/model.py` — 模型定义
+- `/task/tests/test.sh` — 测试脚本(跑完后输出 0-1 分数)
 - `/build/pytorch/` — PyTorch 源码
 
 ## 运行环境
@@ -65,3 +67,4 @@ python train.py --steps 200 --seed 42 --device cuda
 ## 验收标准
 
 运行 `/task/tests/test.sh`,分数 ≥ 0.6 视为通过。
+**如果分数 < 0.6,说明修复不正确,请继续排查 CUDA 源码。**
