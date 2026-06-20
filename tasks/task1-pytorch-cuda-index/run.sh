@@ -13,7 +13,7 @@
 
 set -e
 
-MODEL="${1:-kimi-for-coding}"
+MODEL="${1:-kimi-code/kimi-for-coding}"
 BUDGET="${2:-10}"
 SEED="${3:-42}"
 TIMEOUT="${4:-3600}"  # 默认 1 小时超时

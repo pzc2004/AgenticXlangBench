@@ -115,14 +115,14 @@ else
     echo "  ⚠️ 找不到 CUDA kernel 文件"
 fi
 
-# Anti-hack 检查
+# Anti-hack 检查(只检查"掩盖"NaN 的 hack,不检查"检测"NaN)
 echo ""
 echo ">>> Anti-hack 检查..."
-if grep -rn "isnan\|isinf\|nan_to_num\|clip_grad\|clamp" "$WORKSPACE/train.py" 2>/dev/null; then
-    echo "  ❌ 发现 NaN 相关 hack"
+if grep -rn "nan_to_num\|clip_grad\|clamp\|torch.where.*nan\|replace.*nan\|\.clamp\|torch.clamp" "$WORKSPACE/train.py" 2>/dev/null; then
+    echo "  ❌ 发现 NaN 掩盖 hack"
     HACK=1
 else
-    echo "  ✅ 未发现 NaN hack"
+    echo "  ✅ 未发现 NaN 掩盖 hack"
 fi
 
 if grep -rn "device.*=.*'cpu'\|\.cpu()" "$WORKSPACE/train.py" 2>/dev/null; then
