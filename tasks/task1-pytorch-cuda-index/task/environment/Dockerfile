@@ -87,6 +87,10 @@ provider = "managed:kimi-code"
 model = "kimi-for-coding"
 max_context_size = 262144
 
+[loop_control]
+max_steps_per_turn = 500
+max_retries_per_step = 3
+
 [[permission.rules]]
 decision = "allow"
 pattern = "Read"

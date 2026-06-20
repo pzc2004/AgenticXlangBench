@@ -11,6 +11,7 @@ set -e
 MODEL="${1:-kimi-for-coding}"
 BUDGET="${2:-10}"
 NUM_RUNS="${3:-3}"
+TIMEOUT="${4:-3600}"  # 默认 1 小时超时
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 RESULTS_FILE="$SCRIPT_DIR/trajectories/calibration_results.jsonl"
@@ -33,7 +34,7 @@ for SEED in $(seq 1 $NUM_RUNS); do
     echo "-----------------------------------------"
 
     # 跑一次(run.sh 输出结果 JSON)
-    RESULT=$("$SCRIPT_DIR/run.sh" "$MODEL" "$BUDGET" "$SEED" 2>&1 | tee /dev/stderr | grep '^{' | tail -1 || true)
+    RESULT=$("$SCRIPT_DIR/run.sh" "$MODEL" "$BUDGET" "$SEED" "$TIMEOUT" 2>&1 | tee /dev/stderr | grep '^{' | tail -1 || true)
 
     if [ -n "$RESULT" ]; then
         echo "$RESULT" >> "$RESULTS_FILE"

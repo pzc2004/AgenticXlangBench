@@ -16,6 +16,7 @@ set -e
 MODEL="${1:-kimi-for-coding}"
 BUDGET="${2:-10}"
 SEED="${3:-42}"
+TIMEOUT="${4:-3600}"  # 默认 1 小时超时
 
 TASK_DIR="$(cd "$(dirname "$0")/task" && pwd)"
 RUN_ID="$(date +%Y%m%d_%H%M%S)_${MODEL}_seed${SEED}"
@@ -25,11 +26,12 @@ mkdir -p "$TRAJ_DIR"
 TASK_NAME="$(basename "$(cd "$(dirname "$0")" && pwd)")"
 
 echo "========================================="
-echo " 任务:  $TASK_NAME"
-echo " 模型:  $MODEL"
-echo " 预算:  \$$BUDGET"
-echo " Seed:  $SEED"
-echo " 轨迹:  $TRAJ_DIR/"
+echo " 任务:   $TASK_NAME"
+echo " 模型:   $MODEL"
+echo " 预算:   \$$BUDGET"
+echo " Seed:   $SEED"
+echo " 超时:   ${TIMEOUT}s"
+echo " 轨迹:   $TRAJ_DIR/"
 echo "========================================="
 
 # 构造任务 prompt
@@ -52,6 +54,7 @@ bash tests/test.sh
 echo ""
 echo ">>> [1/3] 启动 Kimi Code (预算 \$$BUDGET, 种子 $SEED)..."
 docker run --rm --gpus all \
+  --timeout "$TIMEOUT" \
   -v "$TASK_DIR:/workspace/task:ro" \
   -v "$TRAJ_DIR:/workspace/trajectories" \
   task1 \
