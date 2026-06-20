@@ -14,7 +14,9 @@ PYTORCH_DIR = os.environ.get("PYTORCH_DIR", "/build/pytorch")
 CUDA_DIR = os.path.join(PYTORCH_DIR, "aten/src/ATen/native/cuda")
 
 def inject_real_bug():
-    """注入真 bug: 去掉 LayerNorm forward kernel 中 rsqrt 的 eps 保护"""
+    """注入真 bug: 去掉 LayerNorm forward kernel 中 rsqrt 的 eps 保护
+    先恢复干净版(如果源码已被修改),再注入 bug。
+    """
     filepath = os.path.join(CUDA_DIR, "layer_norm_kernel.cu")
     if not os.path.exists(filepath):
         print(f"❌ 找不到 {filepath}")
@@ -23,6 +25,14 @@ def inject_real_bug():
     with open(filepath, 'r') as f:
         content = f.read()
 
+    # 先恢复干净版(如果已经被改成 buggy 版)
+    buggy = "c10::cuda::compat::rsqrt(wd.sigma2)"
+    clean = "c10::cuda::compat::rsqrt(wd.sigma2 + eps)"
+    if clean not in content and buggy in content:
+        content = content.replace(buggy, clean, 1)
+        print("  ℹ️ 恢复干净版 rsqrt(wd.sigma2 + eps)")
+
+    # 再注入 bug
     old = "c10::cuda::compat::rsqrt(wd.sigma2 + eps)"
     new = "c10::cuda::compat::rsqrt(wd.sigma2)"
 

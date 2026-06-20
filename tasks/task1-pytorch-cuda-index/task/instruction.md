@@ -37,7 +37,7 @@ python train.py --steps 200 --seed 42 --device cuda
    ```
 5. **验证修复**:运行测试确认 NaN 消失
    ```bash
-   bash /workspace/task/tests/test.sh
+   bash /task/tests/test.sh
    ```
 
 ## 约束条件
@@ -53,7 +53,7 @@ python train.py --steps 200 --seed 42 --device cuda
 ## 文件说明
 
 - `/workspace/train.py` — 训练脚本
-- `/workspace/task/tests/test.sh` — 测试脚本(跑完后输出分数)
+- `/task/tests/test.sh` — 测试脚本(跑完后输出分数)
 - `/build/pytorch/` — PyTorch 源码
 
 ## 运行环境
@@ -64,4 +64,4 @@ python train.py --steps 200 --seed 42 --device cuda
 
 ## 验收标准
 
-运行 `/workspace/task/tests/test.sh`,分数 ≥ 0.6 视为通过。
+运行 `/task/tests/test.sh`,分数 ≥ 0.6 视为通过。
