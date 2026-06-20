@@ -63,7 +63,6 @@ docker run --rm --gpus all \
   kimi -p "$TASK_PROMPT" \
     --model "$MODEL" \
     --output-format stream-json \
-    --yolo \
     2>"$TRAJ_DIR/stderr.log" \
     | grep '^{.*}$' > "$TRAJ_DIR/trajectory.jsonl" || true
 
