@@ -1,75 +1,103 @@
-# Task 1: PyTorch CUDA 多 kernel 修改(1 真 bug + 19 诱饵)
-# 在 PyTorch 源码的多个 CUDA kernel 中注入修改,只有 1 个是真正的 bug
+# Task 1: PyTorch CUDA LayerNorm rsqrt bug(增量编译方案)
+#
+# 基于 fat_base 镜像(保留完整构建环境)
+# 只修改一个 CUDA 文件 + 增量编译(5-15 分钟)
+# 包含 Claude Code 和 Kimi Code,用于 agent 评测
 #
 # 构建命令:
-#   eval $(ssh-agent) && ssh-add ~/.ssh/id_rsa
-#   DOCKER_BUILDKIT=1 docker build --ssh default -t task1 -f Dockerfile .
+#   DOCKER_BUILDKIT=1 docker build \
+#     --secret id=ssh_key,src=.secrets/id_rsa \
+#     --secret id=claude_api_key,src=.secrets/claude_api_key \
+#     --secret id=kimi_api_key,src=.secrets/kimi_api_key \
+#     -t task1 -f tasks/task1-pytorch-cuda-index/task/environment/Dockerfile .
 
-FROM pytorch/pytorch:2.5.0-cuda12.6-cudnn9-devel
-
-# 安装依赖
-RUN apt-get update && apt-get install -y git openssh-client && rm -rf /var/lib/apt/lists/*
-
-# 配置 git 使用 SSH(连接更稳定,避免 HTTPS 超时)
-RUN mkdir -p /root/.ssh && \
-    ssh-keyscan github.com >> /root/.ssh/known_hosts 2>/dev/null && \
-    git config --global url."git@github.com:".insteadOf "https://github.com/"
-
-# clone PyTorch 源码(使用 SSH)
-WORKDIR /build
-RUN --mount=type=ssh git clone --depth 1 --branch v2.5.0 git@github.com:pytorch/pytorch.git
-WORKDIR /build/pytorch
-
-# 初始化必要子模块(使用 SSH)
-RUN --mount=type=ssh git submodule update --init \
-    third_party/pybind11 \
-    third_party/cpuinfo \
-    third_party/FP16 \
-    third_party/FXdiv \
-    third_party/psimd \
-    third_party/pthreadpool \
-    || true
-
-# 复制注入脚本(从 solution/ 目录,agent 不应看到)
-COPY solution/inject_bug.py /build/inject_bug.py
+FROM pytorch-2.5.0-fat-base
 
 # 注入 1 个真 bug + 19 个诱饵
+COPY tasks/task1-pytorch-cuda-index/task/solution/inject_bug.py /tmp/inject_bug.py
 ENV PYTORCH_DIR=/build/pytorch
-RUN python /build/inject_bug.py
+RUN python /tmp/inject_bug.py && rm /tmp/inject_bug.py
+
+# 提交改动到 git(隐藏注入痕迹,防止 agent 用 git diff 找到答案)
+RUN cd /build/pytorch && \
+    git config user.email "build@local" && \
+    git config user.name "build" && \
+    git add -A && \
+    git commit -m "apply code modifications" --no-verify
 
 # 验证真 bug 已注入
-RUN grep -n "j <= N" aten/src/ATen/native/cuda/layer_norm_kernel.cu
+RUN grep -n "rsqrt(wd.sigma2)" /build/pytorch/aten/src/ATen/native/cuda/layer_norm_kernel.cu | grep -v eps
 
-# 删除注入脚本(防止 agent 读到)
-RUN rm /build/inject_bug.py
+# 增量编译:只重编改过的 .cu 文件 + 重新链接 .so
+RUN cd /build/pytorch/build && \
+    ninja -j32 lib/libtorch_cuda.so 2>&1 | tail -3
 
-# 编译 PyTorch(最小化编译选项)
-ENV MAX_JOBS=32
-ENV USE_CUDA=1
-ENV USE_CUDNN=1
-ENV USE_NCCL=0
-ENV USE_DISTRIBUTED=0
-ENV BUILD_TEST=0
-ENV USE_IDEEP=0
-ENV USE_MKLDNN=0
-ENV USE_QNNPACK=0
-ENV USE_PYTORCH_QNNPACK=0
-ENV USE_XNNPACK=0
-ENV USE_FBGEMM=0
-ENV USE_KINETO=0
-ENV BUILD_CAFFE2=0
-ENV BUILD_CAFFE2_OPS=0
-ENV CMAKE_BUILD_TYPE=Release
-
-RUN python setup.py develop
-
-# 清理源码以节省空间
-RUN rm -rf /build/pytorch/.git /build/pytorch/third_party
+# 把新编译的 .so 复制到 Python site-packages
+RUN cp /build/pytorch/build/lib/libtorch_cuda.so \
+       /usr/local/lib/python3.12/dist-packages/torch/lib/libtorch_cuda.so
 
 # 设置工作目录
 WORKDIR /workspace
 
-# 复制任务文件(只复制 agent 需要的)
-COPY workspace/train.py /workspace/
+# 复制训练脚本
+COPY tasks/task1-pytorch-cuda-index/task/workspace/train.py /workspace/
+
+# === 安装 Agent 工具(放在最后,不影响前面的缓存) ===
+
+# 安装 Node.js + npm (Claude Code 依赖)
+RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y nodejs && \
+    rm -rf /var/lib/apt/lists/*
+
+# 安装 Claude Code
+RUN npm install -g @anthropic-ai/claude-code
+
+# 安装 Kimi Code
+RUN curl -fsSL https://code.kimi.com/kimi-code/install.sh | bash
+ENV PATH="/root/.kimi-code/bin:$PATH"
+
+# 配置 API Keys(通过 Docker secret 挂载)
+RUN --mount=type=secret,id=claude_api_key \
+    mkdir -p /root/.claude && \
+    echo "ANTHROPIC_API_KEY=$(cat /run/secrets/claude_api_key)" > /root/.claude/.env
+
+RUN --mount=type=secret,id=kimi_api_key \
+    mkdir -p /root/.kimi-code && \
+    echo "KIMI_API_KEY=$(cat /run/secrets/kimi_api_key)" > /root/.kimi-code/.env
+
+# 也设置为环境变量(Kimi Code 可能需要)
+RUN --mount=type=secret,id=kimi_api_key \
+    echo "KIMI_API_KEY=$(cat /run/secrets/kimi_api_key)" >> /etc/environment
+
+# Kimi Code 配置(非交互式,不需要 kimi login)
+RUN --mount=type=secret,id=kimi_api_key \
+    API_KEY=$(cat /run/secrets/kimi_api_key) && \
+    cat > /root/.kimi-code/config.toml << EOF
+default_model = "kimi-code/kimi-for-coding"
+default_permission_mode = "yolo"
+
+[providers."managed:kimi-code"]
+type = "kimi"
+base_url = "https://api.kimi.com/coding/v1"
+api_key = "${API_KEY}"
+
+[models."kimi-code/kimi-for-coding"]
+provider = "managed:kimi-code"
+model = "kimi-for-coding"
+max_context_size = 262144
+
+[[permission.rules]]
+decision = "allow"
+pattern = "Read"
+
+[[permission.rules]]
+decision = "allow"
+pattern = "Write"
+
+[[permission.rules]]
+decision = "allow"
+pattern = "Bash"
+EOF
 
 CMD ["/bin/bash"]

@@ -1,0 +1,52 @@
+# Fat base 镜像:保留完整构建环境,支持增量编译(5-15 分钟/次)
+# 构建命令:
+#   DOCKER_BUILDKIT=1 docker build --secret id=ssh_key,src=.secrets/id_rsa \
+#     -t pytorch-2.5.0-fat-base -f tasks/task1-pytorch-cuda-index/task/environment/Dockerfile.base .
+
+FROM pytorch/pytorch:2.10.0-cuda12.8-cudnn9-devel
+
+# 安装依赖
+RUN apt-get update && apt-get install -y git openssh-client ninja-build && rm -rf /var/lib/apt/lists/*
+
+# 配置 SSH
+RUN mkdir -p /root/.ssh && \
+    ssh-keyscan github.com >> /root/.ssh/known_hosts 2>/dev/null && \
+    git config --global url."git@github.com:".insteadOf "https://github.com/"
+
+# clone PyTorch 源码(保留 .git)
+WORKDIR /build
+RUN --mount=type=secret,id=ssh_key,target=/root/.ssh/id_rsa \
+    git clone --branch v2.5.0 git@github.com:pytorch/pytorch.git
+WORKDIR /build/pytorch
+
+# 初始化所有子模块(保留 .git,支持增量编译)
+RUN --mount=type=secret,id=ssh_key,target=/root/.ssh/id_rsa \
+    git submodule update --init --recursive 2>&1 || true
+
+# 删除 SSH key(不再需要)
+RUN rm -rf /root/.ssh
+
+# 编译 PyTorch(保留 build 目录,支持 ninja 增量编译)
+ENV MAX_JOBS=32
+ENV USE_CUDA=1
+ENV USE_CUDNN=1
+ENV USE_NCCL=0
+ENV USE_DISTRIBUTED=0
+ENV BUILD_TEST=0
+ENV USE_IDEEP=0
+ENV USE_MKLDNN=0
+ENV USE_QNNPACK=0
+ENV USE_PYTORCH_QNNPACK=0
+ENV USE_XNNPACK=0
+ENV USE_FBGEMM=0
+ENV USE_KINETO=0
+ENV BUILD_CAFFE2=0
+ENV BUILD_CAFFE2_OPS=0
+ENV CMAKE_BUILD_TYPE=Release
+ENV CMAKE_POLICY_VERSION_MINIMUM=3.5
+
+RUN python setup.py install 2>&1 | tail -5
+
+# 不清理 .git / third_party / build 目录!保留增量编译能力!
+
+CMD ["/bin/bash"]

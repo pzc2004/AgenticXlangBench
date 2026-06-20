@@ -42,3 +42,7 @@ Thumbs.db
 # 环境变量(API keys)
 .env
 .env.local
+
+# 密钥和敏感配置
+.env
+.secrets/

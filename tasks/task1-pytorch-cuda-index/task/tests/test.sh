@@ -1,12 +1,8 @@
 #!/bin/bash
 # tests/test.sh — Task 1 判题脚本(分层评分 + anti-hack)
-# 注意:不使用 set -e,因为某些检查命令可能返回非零
+# 注意:不使用 set -e
 
-# 使用绝对路径,避免 dirname 解析问题
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-TASK_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-WORKSPACE="$TASK_DIR/workspace"
-PYTORCH_SRC="/build/pytorch"
+WORKSPACE="/workspace"
 REWARD_FILE="/logs/verifier/reward.txt"
 mkdir -p "$(dirname "$REWARD_FILE")"
 
@@ -14,7 +10,7 @@ score=0
 HACK=0
 
 echo "========================================="
-echo " Task 1: PyTorch LayerNorm CUDA Off-by-One"
+echo " Task 1: PyTorch LayerNorm CUDA rsqrt Bug"
 echo "========================================="
 
 # === 1. 基础:PyTorch 可导入(0.10) ===
@@ -32,7 +28,7 @@ fi
 # === 2. 基础:GPU 可用(0.05) ===
 echo ""
 echo ">>> [2/6] GPU 检查..."
-if python -c "import torch; assert torch.cuda.is_available(), 'CUDA not available'" 2>/dev/null; then
+if python -c "import torch; assert torch.cuda.is_available()" 2>/dev/null; then
     score=0.15
     echo "  ✅ CUDA 可用"
 else
@@ -64,7 +60,7 @@ else
     exit 0
 fi
 
-# === 4. 症状消除:多 batch_size 测试(0.10) ===
+# === 4. 多 batch_size 测试(0.10) ===
 echo ""
 echo ">>> [4/6] 多 batch_size 测试..."
 BATCH_FAIL=0
@@ -105,19 +101,21 @@ fi
 echo ""
 echo ">>> [6/6] 代码修改检查..."
 
-# 检查 PyTorch 源码是否被修改
-if [ -d "$PYTORCH_SRC" ]; then
-    LAYER_NORM_FILE="$PYTORCH_SRC/aten/src/ATen/native/cuda/layer_norm_kernel.cu"
-    if grep -q "j <= N" "$LAYER_NORM_FILE" 2>/dev/null; then
-        echo "  ⚠️ LayerNorm CUDA 内核仍有 off-by-one bug(未修复)"
+# 检查 CUDA kernel 是否被修复
+KERNEL_FILE="/build/pytorch/aten/src/ATen/native/cuda/layer_norm_kernel.cu"
+if [ -f "$KERNEL_FILE" ]; then
+    if grep -q "rsqrt(wd.sigma2 + eps)" "$KERNEL_FILE"; then
+        echo "  ✅ CUDA kernel 已修复(rsqrt 有 eps)"
+    elif grep -q "rsqrt(wd.sigma2)" "$KERNEL_FILE"; then
+        echo "  ⚠️ CUDA kernel 仍有 bug(rsqrt 无 eps)"
     else
-        echo "  ✅ LayerNorm CUDA 内核已修复"
+        echo "  ⚠️ CUDA kernel 结构异常"
     fi
 else
-    echo "  ⚠️ 无法检查 PyTorch 源码"
+    echo "  ⚠️ 找不到 CUDA kernel 文件"
 fi
 
-# Anti-hack:检查 train.py 有没有 hack
+# Anti-hack 检查
 echo ""
 echo ">>> Anti-hack 检查..."
 if grep -rn "isnan\|isinf\|nan_to_num\|clip_grad\|clamp" "$WORKSPACE/train.py" 2>/dev/null; then
@@ -132,13 +130,6 @@ if grep -rn "device.*=.*'cpu'\|\.cpu()" "$WORKSPACE/train.py" 2>/dev/null; then
     HACK=1
 else
     echo "  ✅ 未发现 CPU 回退"
-fi
-
-if grep -rn "try:" "$WORKSPACE/train.py" 2>/dev/null; then
-    echo "  ❌ 发现 try/catch"
-    HACK=1
-else
-    echo "  ✅ 未发现 try/catch"
 fi
 
 # === 最终评分 ===

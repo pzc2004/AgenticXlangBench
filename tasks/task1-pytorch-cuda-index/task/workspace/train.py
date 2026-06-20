@@ -8,8 +8,40 @@
 
 import argparse
 import time
+import os
+import ctypes
 import torch
 import torch.nn as nn
+
+# === 加载自定义 CUDA LayerNorm kernel ===
+# 这段代码在训练开始前加载自定义 kernel 并覆盖 PyTorch 的 LayerNorm.forward
+# Agent 的任务是找到并修复自定义 kernel 中的 bug,而不是删除这段代码
+_SO_PATH = "/opt/layernorm/layernorm_override.so"
+if os.path.exists(_SO_PATH):
+    _layernorm_lib = ctypes.CDLL(_SO_PATH)
+    _layernorm_lib.custom_layer_norm_forward.argtypes = [
+        ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+        ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_float
+    ]
+    _original_ln_forward = nn.LayerNorm.forward
+
+    def _custom_ln_forward(self, x):
+        if not x.is_cuda:
+            return _original_ln_forward(self, x)
+        output = torch.empty_like(x)
+        _layernorm_lib.custom_layer_norm_forward(
+            x.data_ptr(),
+            self.weight.data_ptr() if self.weight is not None else 0,
+            self.bias.data_ptr() if self.bias is not None else 0,
+            output.data_ptr(),
+            x.shape[0],
+            x.shape[-1],
+            self.eps if hasattr(self, 'eps') else 1e-5
+        )
+        torch.cuda.synchronize()
+        return output
+
+    nn.LayerNorm.forward = _custom_ln_forward
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -21,60 +53,55 @@ def parse_args():
     return parser.parse_args()
 
 class MultiOpModel(nn.Module):
-    """使用多种 op 的模型,用于测试不同 CUDA kernel"""
+    """LayerNorm + Linear 模型
+
+    LayerNorm 在第一层,确保零方差输入直接触发 bug。
+    后续用 Linear + ReLU 保证模型有学习能力。
+    """
     def __init__(self):
         super().__init__()
-        # Conv2d + BatchNorm + ReLU
-        self.conv1 = nn.Conv2d(3, 32, 3, padding=1)
-        self.bn1 = nn.BatchNorm2d(32)
+        # LayerNorm 在最前面:零方差输入直接触发 rsqrt(0) = Inf → NaN
+        self.ln1 = nn.LayerNorm(256)   # ← bug 触发点(第一层!)
+        self.fc1 = nn.Linear(256, 512)
         self.relu1 = nn.ReLU()
 
-        # Conv2d + GELU
-        self.conv2 = nn.Conv2d(32, 64, 3, padding=1)
-        self.gelu = nn.GELU()
-
-        # MaxPool
-        self.pool = nn.MaxPool2d(2)
-
-        # Conv2d + SiLU
-        self.conv3 = nn.Conv2d(64, 128, 3, padding=1)
-        self.silu = nn.SiLU()
-
-        # LayerNorm ← 真正的 bug 在这里
-        self.flatten = nn.Flatten()
-        self.ln1 = nn.LayerNorm(128 * 16 * 16)
         self.ln2 = nn.LayerNorm(512)
+        self.fc2 = nn.Linear(512, 512)
+        self.relu2 = nn.ReLU()
 
-        # Linear + Dropout
-        self.fc1 = nn.Linear(128 * 16 * 16, 512)
-        self.dropout = nn.Dropout(0.1)
-        self.fc2 = nn.Linear(512, 10)
+        self.fc3 = nn.Linear(512, 10)
 
     def forward(self, x):
-        # Conv2d → BatchNorm → ReLU
-        x = self.relu1(self.bn1(self.conv1(x)))
-        # Conv2d → GELU
-        x = self.gelu(self.conv2(x))
-        # MaxPool
-        x = self.pool(x)
-        # Conv2d → SiLU
-        x = self.silu(self.conv3(x))
-        # Flatten → LayerNorm
-        x = self.flatten(x)
-        x = self.ln1(x)  # ← bug 触发点
-        # Linear → LayerNorm → Dropout
-        x = self.fc1(x)
-        x = self.ln2(x)  # ← 多调几次
-        x = self.dropout(x)
-        # Linear
-        x = self.fc2(x)
+        x = self.relu1(self.fc1(self.ln1(x)))   # LayerNorm 先!
+        x = self.relu2(self.fc2(self.ln2(x)))
+        x = self.fc3(x)
         return x
 
-def make_batch(batch_size, device):
-    """生成随机训练数据(图像分类)"""
-    x = torch.randn(batch_size, 3, 32, 32, device=device)
+def make_batch(batch_size, device, step):
+    """生成随机训练数据
+
+    每 20 步注入零方差 batch:所有特征设为相同值。
+    LayerNorm 跨特征归一化,方差 = 0 时 rsqrt(0) = Inf → NaN。
+    """
+    x = torch.randn(batch_size, 256, device=device)
     y = torch.randint(0, 10, (batch_size,), device=device)
+
+    # 每 20 步:所有特征设为相同值(方差 = 0)
+    if step % 20 == 0 and step > 0:
+        val = torch.rand(batch_size, 1, device=device)
+        x = val.expand(-1, 256).clone()
+
     return x, y
+
+def check_layernorm_bug(device):
+    """直接测试 LayerNorm CUDA kernel 是否有 bug
+    用零方差输入触发 rsqrt(0) = Inf → NaN
+    这个检查本身不消耗训练步骤,只用于检测 bug
+    """
+    ln = torch.nn.LayerNorm(8).to(device)
+    x = torch.zeros(4, 8, device=device)
+    y = ln(x)
+    return torch.isnan(y).any().item()
 
 def main():
     args = parse_args()
@@ -87,13 +114,20 @@ def main():
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
     loss_fn = nn.CrossEntropyLoss()
 
+    # 检测 LayerNorm CUDA kernel 是否有 bug(零方差输入)
+    # 这个检查在训练开始前执行,不消耗训练步骤
+    layernorm_bug = check_layernorm_bug(device)
+    if layernorm_bug:
+        print("[WARNING] LayerNorm CUDA kernel bug detected: rsqrt(0) produces NaN!")
+        print("[WARNING] This will cause training instability.")
+
     nan_detected = False
     losses = []
     times = []
 
     for step in range(args.steps):
         t0 = time.time()
-        x, y = make_batch(args.batch_size, device)
+        x, y = make_batch(args.batch_size, device, step)
 
         output = model(x)
         loss = loss_fn(output, y)
