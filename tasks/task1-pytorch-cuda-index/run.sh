@@ -51,10 +51,11 @@ bash tests/test.sh
 这会输出分数(0-1)。确保在修复后运行这一步。"
 
 # 启动容器,挂载任务文件和轨迹目录
+# 用系统 timeout 命令限制总时间(Docker 本身不支持 --timeout)
 echo ""
-echo ">>> [1/3] 启动 Kimi Code (预算 \$$BUDGET, 种子 $SEED)..."
+echo ">>> [1/3] 启动 Kimi Code (预算 \$$BUDGET, 种子 $SEED, 超时 ${TIMEOUT}s)..."
+timeout "$TIMEOUT" \
 docker run --rm --gpus all \
-  --timeout "$TIMEOUT" \
   -v "$TASK_DIR:/workspace/task:ro" \
   -v "$TRAJ_DIR:/workspace/trajectories" \
   task1 \
