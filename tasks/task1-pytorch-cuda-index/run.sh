@@ -54,6 +54,7 @@ bash tests/test.sh
 # 用系统 timeout 命令限制总时间(Docker 本身不支持 --timeout)
 echo ""
 echo ">>> [1/3] 启动 Kimi Code (预算 \$$BUDGET, 种子 $SEED, 超时 ${TIMEOUT}s)..."
+# 运行 Kimi Code,过滤掉 Docker 容器的 CUDA 初始化噪音(只保留 JSON 行)
 timeout "$TIMEOUT" \
 docker run --rm --gpus all \
   -v "$TASK_DIR:/workspace/task:ro" \
@@ -62,9 +63,9 @@ docker run --rm --gpus all \
   kimi -p "$TASK_PROMPT" \
     --model "$MODEL" \
     --output-format stream-json \
-    --max-budget-usd "$BUDGET" \
     --yolo \
-    > "$TRAJ_DIR/trajectory.jsonl" 2>"$TRAJ_DIR/stderr.log" || true
+    2>"$TRAJ_DIR/stderr.log" \
+    | grep '^{.*}$' > "$TRAJ_DIR/trajectory.jsonl" || true
 
 echo ">>> [2/3] Kimi Code 结束,运行最终测试..."
 # 再启容器跑测试(上一个容器已退出)
