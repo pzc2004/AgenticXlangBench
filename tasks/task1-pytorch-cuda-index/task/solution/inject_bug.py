@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 """
-注入 1 个真 bug + 19 个诱饵到 PyTorch CUDA 源码
+注入 3 个复合真 bug + 20 个诱饵到 PyTorch CUDA 源码
 
-真 bug: LayerNorm forward kernel 中 rsqrt(wd.sigma2 + eps) → rsqrt(-wd.sigma2 + eps)
-        负号 typo:当 var > eps 时,参数为负 → rsqrt(负数) = NaN
-诱饵:   19 个 CUDA kernel 中插入可疑注释/宏(不影响编译)
+Bug 1: backward 梯度符号翻转(所有数据都触发)
+Bug 2: forward eps 条件错误(方差<0.1时用0.01代替eps)
+Bug 3: forward NaN 注入(blockIdx.x % 8 == 0 时注入 NaN)
+
+每个 bug 在不同条件下表现不同,需要多种测试才能全部发现。
+
+诱饵: 20 个 CUDA kernel 中插入可编译的假代码
 """
 
 import os
@@ -14,10 +18,9 @@ PYTORCH_DIR = os.environ.get("PYTORCH_DIR", "/build/pytorch")
 CUDA_DIR = os.path.join(PYTORCH_DIR, "aten/src/ATen/native/cuda")
 
 def inject_real_bug():
-    """注入真 bug: rsqrt(wd.sigma2 + eps) → rsqrt(-wd.sigma2 + eps)
-    负号 typo:当 var > eps 时,参数为负 → rsqrt(负数) = NaN
-    先恢复干净版(如果源码已被修改),再注入 bug。
-    """
+    """注入 3 个复合真 bug"""
+    success = True
+
     filepath = os.path.join(CUDA_DIR, "layer_norm_kernel.cu")
     if not os.path.exists(filepath):
         print(f"❌ 找不到 {filepath}")
@@ -26,55 +29,70 @@ def inject_real_bug():
     with open(filepath, 'r') as f:
         content = f.read()
 
-    # 先恢复干净版(如果已经被改成 buggy 版)
-    clean = "c10::cuda::compat::rsqrt(wd.sigma2 + eps)"
-    buggy_v1 = "c10::cuda::compat::rsqrt(wd.sigma2)"      # 旧 bug(去 eps)
-    buggy_v2 = "c10::cuda::compat::rsqrt(-wd.sigma2 + eps)" # 新 bug(负号)
+    # === Bug 1: backward 梯度符号翻转(所有数据都触发) ===
+    clean1 = ("T_ACC f_grad_input = fH * gamma_val * dy;\n"
+              "      f_grad_input -= (x - mean_val) * rstd_val * stats_x2;")
+    buggy1 = ("T_ACC f_grad_input = fH * gamma_val * dy;\n"
+              "      f_grad_input += (x - mean_val) * rstd_val * stats_x2;")
 
-    if clean not in content:
-        # 恢复干净版
-        content = content.replace(buggy_v2, clean, 1)
-        content = content.replace(buggy_v1, clean, 1)
-        print("  ℹ️ 恢复干净版")
+    if clean1 not in content:
+        content = content.replace(buggy1, clean1, 1)
 
-    # 注入新 bug: 负号 typo
-    old = clean
-    new = "c10::cuda::compat::rsqrt(-wd.sigma2 + eps)"
+    if clean1 in content:
+        content = content.replace(clean1, buggy1, 1)
+        print(f"  ✅ Bug 1: backward 梯度符号翻转(-= → +=)")
+    else:
+        print(f"❌ 找不到 Bug 1 目标代码")
+        success = False
 
-    if old not in content:
-        print(f"❌ 找不到目标代码: {old}")
-        return False
+    # === Bug 2+3: forward 复合 bug ===
+    # 原始: T_ACC rstd_val = c10::cuda::compat::rsqrt(wd.sigma2 + eps);
+    # 改为: 条件 eps + 条件 NaN
+    clean_fwd = "T_ACC rstd_val = c10::cuda::compat::rsqrt(wd.sigma2 + eps);"
+    buggy_fwd = ("T_ACC _eps = (wd.sigma2 < T_ACC(0.1)) ? T_ACC(0.01) : eps;\n"
+                 "    T_ACC rstd_val = c10::cuda::compat::rsqrt(wd.sigma2 + _eps);\n"
+                 "    if (blockIdx.x > 32) rstd_val = T_ACC(0.0) / T_ACC(0.0);")
 
-    content = content.replace(old, new, 1)
+    if clean_fwd not in content:
+        # 尝试恢复
+        content = content.replace(buggy_fwd, clean_fwd, 1)
+
+    if clean_fwd in content:
+        content = content.replace(clean_fwd, buggy_fwd, 1)
+        print(f"  ✅ Bug 2: forward eps 条件错误(方差<0.1时用0.01)")
+        print(f"  ✅ Bug 3: forward NaN 注入(1/8 的行变 NaN)")
+    else:
+        print(f"❌ 找不到 forward bug 目标代码")
+        success = False
+
     with open(filepath, 'w') as f:
         f.write(content)
 
-    print(f"  ✅ 真 bug: layer_norm_kernel.cu (rsqrt(wd.sigma2 + eps) → rsqrt(-wd.sigma2 + eps))")
-    print(f"     原因:负号 typo → 当 var > eps 时 rsqrt(负数) = NaN")
-    return True
+    return success
 
 def inject_decoys():
-    """注入 19 个诱饵到其他 CUDA kernel"""
+    """注入 20 个可编译的诱饵到其他 CUDA kernel"""
     decoys = [
-        ("Normalization.cu",           "#define BN_EPSILON 1e-5  // FIXME: changed from 1e-5"),
-        ("ActivationGeluKernel.cu",    "#define GELU_COEFF 0.044715  // TODO: verify this constant"),
-        ("ActivationSiluKernel.cu",    "// WARNING: sigmoid precision may be affected"),
-        ("ActivationPreluKernel.cu",   "#define PRELU_SLOPE 0.25  // FIXME: hardcoded slope"),
-        ("DilatedMaxPool2d.cu",        "// NOTE: max pool boundary condition changed"),
-        ("AveragePool2d.cu",           "#define AVG_POOL_EPSILON 1e-7  // FIXME: added epsilon"),
-        ("Dropout.cu",                 "// WARNING: dropout threshold may be off by 1 ULP"),
-        ("SoftMax.cu",                 "// FIXME: using fast exp approximation"),
-        ("LossCTC.cu",                 "// NOTE: log base changed for numerical stability"),
-        ("Embedding.cu",               "// WARNING: stride calculation may overflow"),
-        ("Indexing.cu",                "// FIXME: boundary check relaxed for performance"),
-        ("Sort.cu",                    "// NOTE: comparison operator changed for stability"),
-        ("CompareKernels.cu",          "// WARNING: equality check uses epsilon"),
-        ("Copy.cu",                    "// FIXME: copy offset may be off by one"),
-        ("UnaryOpsKernel.cu",          "// NOTE: cast may lose precision"),
-        ("FillKernel.cu",              "// WARNING: fill value may be incorrect"),
-        ("BinaryMulKernel.cu",         "// FIXME: multiplication may overflow"),
-        ("ReduceSumProdKernel.cu",     "// NOTE: initial accumulator value changed"),
-        ("Reduce.cu",                  "// WARNING: reduction order may affect result"),
+        ("Normalization.cu",           "    // float bn_sign = -1.0f;  // FIXME: sign flip"),
+        ("ActivationGeluKernel.cu",    "    // grad = -grad;  // TODO: sign correction"),
+        ("SoftMax.cu",                 "    // result = -result;  // FIXME: sign error"),
+        ("DilatedMaxPool2d.cu",        "    // grad_input = -grad_input;  // TODO: check sign"),
+        ("AveragePool2d.cu",           "    // grad = -grad;  // FIXME: gradient sign"),
+        ("ActivationPreluKernel.cu",   "    // float eps = 0.01f;  // FIXME: epsilon override"),
+        ("ActivationSiluKernel.cu",    "    // float eps = 0.01f;  // TODO: verify epsilon"),
+        ("BinaryMulKernel.cu",         "    // if (M > 32) result *= 0.5f;  // FIXME: batch size check"),
+        ("Dropout.cu",                 "    // if (M > 32) dropout_p = 1.0f;  // TODO: batch size limit"),
+        ("Embedding.cu",               "    // int offset = 0;  // FIXME: stride offset"),
+        ("Indexing.cu",                "    // int boundary = 0;  // TODO: boundary check"),
+        ("Sort.cu",                    "    // int cmp_offset = 0;  // FIXME: comparison offset"),
+        ("Copy.cu",                    "    // int copy_offset = 0;  // FIXME: copy offset"),
+        ("UnaryOpsKernel.cu",          "    // float precision = 1e-5f;  // NOTE: precision constant"),
+        ("FillKernel.cu",              "    // float fill_val = 0.0f;  // WARNING: fill value"),
+        ("CompareKernels.cu",          "    // float cmp_eps = 1e-5f;  // WARNING: comparison epsilon"),
+        ("LossCTC.cu",                 "    // float log_eps = 1e-5f;  // NOTE: log epsilon"),
+        ("ReduceSumProdKernel.cu",     "    // float init_val = 0.0f;  // NOTE: initial accumulator"),
+        ("Reduce.cu",                  "    // float reduce_eps = 1e-5f;  // WARNING: reduction epsilon"),
+        ("layer_norm_kernel.cu",       "    // float sign_flip = -1.0f;  // FIXME: temporary sign debug"),
     ]
 
     count = 0
@@ -84,11 +102,13 @@ def inject_decoys():
             continue
         with open(filepath, 'r') as f:
             lines = f.readlines()
+
         insert_idx = 0
         for i, line in enumerate(lines):
             if line.strip().startswith('#include'):
                 insert_idx = i + 1
                 break
+
         lines.insert(insert_idx, comment + '\n')
         with open(filepath, 'w') as f:
             f.writelines(lines)
@@ -102,14 +122,14 @@ def main():
     print("注入 bug + 诱饵")
     print("=" * 60)
 
-    print("\n>>> 真 bug (1 个):")
+    print("\n>>> 真 bug (3 个复合):")
     if not inject_real_bug():
         sys.exit(1)
 
     print(f"\n>>> 诱饵:")
     decoy_count = inject_decoys()
 
-    print(f"\n总计: 1 真 bug + {decoy_count} 诱饵 = {1 + decoy_count} 个修改")
+    print(f"\n总计: 3 真 bug + {decoy_count} 诱饵 = {3 + decoy_count} 个修改")
 
 if __name__ == "__main__":
     main()

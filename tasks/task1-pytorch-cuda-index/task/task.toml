@@ -4,7 +4,7 @@ version = "1.0"
 author = "pzc2004"
 difficulty = "hard"
 category = "cross-lang-bugfix"
-tags = ["cuda", "layernorm", "nan", "off-by-one", "custom-kernel"]
+tags = ["cuda", "layernorm", "batchnorm", "groupnorm", "eps", "forward", "multi-bug", "accuracy"]
 
 [environment]
 gpu = true
@@ -13,7 +13,7 @@ disk_min = "1GB"
 ram_min = "8GB"
 
 [verifier]
-timeout = 300
+timeout = 600
 test_script = "tests/test.sh"
 
 [agent]

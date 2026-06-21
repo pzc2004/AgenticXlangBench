@@ -31,6 +31,7 @@ class ImageClassifier(nn.Module):
             nn.BatchNorm2d(32),
             nn.ReLU(),
             nn.Conv2d(32, 64, 3, padding=1),
+            nn.GroupNorm(8, 64),
             nn.GELU(),
             nn.MaxPool2d(2),
         )
@@ -41,7 +42,7 @@ class ImageClassifier(nn.Module):
             nn.ReLU(),
             nn.Dropout(0.1),
             nn.Linear(512, 256),
-            FeatureNorm(256),
+            nn.GroupNorm(8, 256),
             nn.Dropout(0.1),
             nn.Linear(256, 10),
         )

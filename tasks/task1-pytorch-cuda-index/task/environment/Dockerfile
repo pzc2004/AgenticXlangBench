@@ -1,4 +1,4 @@
-# Task 1: PyTorch CUDA LayerNorm rsqrt bug(增量编译方案)
+# Task 1: PyTorch CUDA LayerNorm backward 梯度符号错误(增量编译方案)
 #
 # 基于 fat_base 镜像(保留完整构建环境)
 # 包含 Claude Code 和 Kimi Code,API key 在启动容器时注入
@@ -44,7 +44,9 @@ ENV PYTORCH_DIR=/build/pytorch
 RUN python /tmp/inject_bug.py && \
     rm /tmp/inject_bug.py && \
     echo "=== 验证 bug 注入 ===" && \
-    grep -n "rsqrt(-wd" /build/pytorch/aten/src/ATen/native/cuda/layer_norm_kernel.cu && \
+    grep -n "f_grad_input += (x - mean_val)" /build/pytorch/aten/src/ATen/native/cuda/layer_norm_kernel.cu && \
+    grep -n "_eps = (wd.sigma2" /build/pytorch/aten/src/ATen/native/cuda/layer_norm_kernel.cu && \
+    grep -n "blockIdx.x > 32" /build/pytorch/aten/src/ATen/native/cuda/layer_norm_kernel.cu && \
     cd /build/pytorch && \
     git config user.email "build@local" && \
     git config user.name "build" && \
@@ -53,7 +55,9 @@ RUN python /tmp/inject_bug.py && \
     touch aten/src/ATen/native/cuda/layer_norm_kernel.cu && \
     cd build && \
     ninja -j32 lib/libtorch_cuda.so 2>&1 | tail -3 && \
-    cp lib/libtorch_cuda.so /usr/local/lib/python3.12/dist-packages/torch/lib/libtorch_cuda.so
+    cp lib/libtorch_cuda.so /usr/local/lib/python3.12/dist-packages/torch/lib/libtorch_cuda.so && \
+    echo "=== 清理 git 历史(防止 agent 通过 git diff 找到改动) ===" && \
+    rm -rf /build/pytorch/.git
 
 # 设置工作目录(任务文件通过 docker run -v 挂载,不烤进镜像)
 WORKDIR /workspace

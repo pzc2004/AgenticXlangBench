@@ -1,9 +1,9 @@
-# 任务:修复 PyTorch 训练 NaN 问题
+# 任务:修复 PyTorch CUDA 训练精度差问题
 
 ## 背景
 
 我们使用了一个从源码编译的 PyTorch 2.5.0(源码在 `/build/pytorch/`)。
-在训练一个图像分类模型时,loss 变成 NaN。
+在训练一个图像分类模型时,CUDA 模式的训练精度远低于 CPU 模式。
 
 ## Bug 现象
 
@@ -11,22 +11,23 @@
 
 ```bash
 cd /workspace
-python train.py --steps 100 --seed 42 --device cuda
+python train.py --steps 100 --seed 42 --device cuda --eval_fixed_data
 ```
 
-预期:loss 正常下降。
-实际:训练过程中 loss 变成 NaN。
+预期:训练后 accuracy 应达到 50% 以上(固定数据集上)。
+实际:CUDA 训练后 accuracy 仅 ~10-30%,远低于预期。
 
-注意:用 `--device cpu` 时**不会出现 NaN**。
+注意:用 `--device cpu` 时 **accuracy 正常**(50%+)。问题仅出现在 CUDA 上。
 
 ## 已知信息
 
 - PyTorch 是从源码编译的,源码在 `/build/pytorch/`
-- **你需要找到并修复 PyTorch 源码中导致 NaN 的 CUDA kernel bug**
+- **CUDA 训练 accuracy 远低于 CPU,说明 CUDA 路径存在 bug**
+- 你需要找到并修复 PyTorch 源码中导致 CUDA 训练精度差的 kernel bug
 
 ## 你的任务
 
-1. **理解 bug**:分析为什么训练会出现 NaN
+1. **理解 bug**:分析为什么 CUDA 训练 accuracy 远低于 CPU
 2. **定位 bug**:在 `/build/pytorch/` 的 CUDA 源码中找到有问题的代码
 3. **修复 bug**:修改 CUDA 源码(只允许修改 `.cu` / `.cpp` / `.h` 文件)
 4. **重新编译**:修复后需要重新编译 PyTorch
@@ -53,7 +54,7 @@ python train.py --steps 100 --seed 42 --device cuda
 
 ## 文件说明
 
-- `/workspace/train.py` — 训练脚本
+- `/workspace/train.py` — 训练脚本(支持 `--eval_fixed_data` 用固定数据训练)
 - `/workspace/model.py` — 模型定义
 - `/task/tests/test.sh` — 测试脚本(跑完后输出 0-1 分数)
 - `/build/pytorch/` — PyTorch 源码
