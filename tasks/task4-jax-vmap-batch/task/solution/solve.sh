@@ -11,7 +11,6 @@ SRC_DIR="$JAX_DIR/_src"
 
 echo ">>> 修复所有 bug..."
 
-# 直接调用 inject_bug.py 的反转版本
 python3 /task/solution/inject_bug.py --reverse
 
 echo ">>> 清除字节码缓存..."

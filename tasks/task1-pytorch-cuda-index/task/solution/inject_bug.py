@@ -14,6 +14,7 @@ PYTORCH_DIR = os.environ.get("PYTORCH_DIR", "/build/pytorch")
 CUDA_DIR = os.path.join(PYTORCH_DIR, "aten/src/ATen/native/cuda")
 WORKSPACE = os.environ.get("WORKSPACE", "/workspace")
 
+REVERSE = "--reverse" in sys.argv
 
 def read_file(filepath):
     with open(filepath) as f:
@@ -25,6 +26,8 @@ def write_file(filepath, content):
 
 def apply_bug(filepath, old, new, name):
     content = read_file(filepath)
+    if REVERSE:
+        old, new = new, old
     if old in content:
         content = content.replace(old, new, 1)
         write_file(filepath, content)

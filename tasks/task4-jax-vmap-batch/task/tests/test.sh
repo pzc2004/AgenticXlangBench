@@ -1,5 +1,6 @@
 #!/bin/bash
 # tests/test.sh — Task 4 判题脚本
+# 覆盖 16 种操作的 vmap+grad 测试
 
 WORKSPACE="/workspace"
 REWARD_FILE="/logs/verifier/reward.txt"
@@ -24,9 +25,9 @@ else
     exit 0
 fi
 
-# === 2. 核心:vmap+grad 测试 ===
+# === 2. 核心: 多操作 vmap+grad 测试 ===
 echo ""
-echo ">>> [2/4] vmap+grad 梯度测试..."
+echo ">>> [2/4] 多操作 vmap+grad 测试..."
 ACC_PASS=0
 ACC_FAIL=0
 for seed in 1 2 3 4 5; do
@@ -37,12 +38,13 @@ for seed in 1 2 3 4 5; do
 
     if [ -n "$total" ] && [ "$total" -gt 0 ]; then
         pct=$(python -c "print(f'{$correct/$total*100:.1f}')" 2>/dev/null || echo "0")
-        ok=$(python -c "print(1 if $correct/$total >= 0.8 else 0)" 2>/dev/null || echo "0")
+        # 要求 100% 通过（所有 16 种操作都必须正确）
+        ok=$(python -c "print(1 if $correct/$total >= 1.0 else 0)" 2>/dev/null || echo "0")
         if [ "$ok" = "1" ]; then
-            echo "  ✅ seed=$seed: accuracy ${pct}%"
+            echo "  ✅ seed=$seed: accuracy ${pct}% ($correct/$total)"
             ACC_PASS=$((ACC_PASS + 1))
         else
-            echo "  ❌ seed=$seed: accuracy ${pct}%"
+            echo "  ❌ seed=$seed: accuracy ${pct}% ($correct/$total)"
             ACC_FAIL=$((ACC_FAIL + 1))
         fi
     else
@@ -55,7 +57,7 @@ if [ $ACC_PASS -eq 5 ]; then
     score=0.55
     echo "  ✅ 所有 seed 测试通过"
 elif [ $ACC_PASS -ge 3 ]; then
-    score=0.40
+    score=0.30
     echo "  ⚠️ $ACC_PASS/5 个 seed 通过"
 else
     echo "  ❌ $ACC_PASS/5 个 seed 通过"
@@ -74,16 +76,22 @@ for shape in "4,8" "8,16" "16,32" "32,64"; do
     total=$(echo "$acc_line" | awk '{print $3}')
 
     if [ -n "$total" ] && [ "$total" -gt 0 ]; then
-        ok=$(python -c "print(1 if $correct/$total >= 0.8 else 0)" 2>/dev/null || echo "0")
+        # 要求 100% 通过
+        ok=$(python -c "print(1 if $correct/$total >= 1.0 else 0)" 2>/dev/null || echo "0")
         if [ "$ok" = "1" ]; then
             SHAPE_PASS=$((SHAPE_PASS + 1))
+            echo "  ✅ shape=$shape: $correct/$total"
+        else
+            echo "  ❌ shape=$shape: $correct/$total"
         fi
     fi
 done
 
 if [ $SHAPE_PASS -ge 3 ]; then
     score=0.70
-    echo "  ✅ 形状测试通过"
+    echo "  ✅ 形状测试通过 ($SHAPE_PASS/4)"
+else
+    echo "  ❌ 形状测试失败 ($SHAPE_PASS/4)"
 fi
 
 # === 4. Anti-hack ===
@@ -95,6 +103,11 @@ if grep -rn "jax.grad\|jax.vmap\|from jax import.*grad\|from jax import.*vmap" "
 else
     echo "  ❌ 未使用标准 JAX API"
     HACK=1
+fi
+
+# 检查是否禁用了 vmap（手写循环替代）
+if grep -rn "for.*in.*range\|while.*:" "$WORKSPACE/test_vmap.py" 2>/dev/null | grep -v "#"; then
+    echo "  ⚠️ 发现循环，可能绕过 vmap"
 fi
 
 if [ $HACK -eq 0 ]; then
