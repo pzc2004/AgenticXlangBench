@@ -1,10 +1,6 @@
 #!/bin/bash
-# run.sh — 用 Kimi Code 跑一次任务 + 保存轨迹 + 记录分数
-#
-# 用法: ./run.sh [model] [budget_usd] [seed]
-# 示例: ./run.sh kimi-code/kimi-for-coding 10 42
-#
-# API key 通过 .secrets/ 目录读取,启动容器时注入(不写入镜像)
+# run.sh — 用 Kimi Code 跑单次任务 + 保存轨迹 + 拿 reward
+# 用法: ./run.sh [model] [budget_usd] [seed] [timeout]
 
 set -e
 
@@ -22,14 +18,12 @@ mkdir -p "$TRAJ_DIR"
 
 TASK_NAME="$(basename "$SCRIPT_DIR")"
 
-# 读取 API keys
 SECRETS_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)/.secrets"
 ANTHROPIC_KEY=$(cat "$SECRETS_DIR/claude_api_key" 2>/dev/null | tr -d '[:space:]')
 KIMI_KEY=$(cat "$SECRETS_DIR/kimi_api_key" 2>/dev/null | tr -d '[:space:]')
 
-# 生成 Kimi config.toml(临时,含真实 API key)
 KIMI_CONFIG="$TRAJ_DIR/kimi_config.toml"
-cat > "$KIMI_CONFIG" << EOF
+cat > "$KIMI_CONFIG" << KIMEOF
 default_model = "$MODEL"
 default_permission_mode = "yolo"
 
@@ -58,7 +52,15 @@ pattern = "Write"
 [[permission.rules]]
 decision = "allow"
 pattern = "Bash"
-EOF
+
+[[permission.rules]]
+decision = "deny"
+pattern = "WebSearch"
+
+[[permission.rules]]
+decision = "deny"
+pattern = "WebFetch"
+KIMEOF
 
 echo "========================================="
 echo " 任务:   $TASK_NAME"
@@ -69,7 +71,6 @@ echo " 超时:   ${TIMEOUT}s"
 echo " 轨迹:   $TRAJ_DIR/"
 echo "========================================="
 
-# 构造任务 prompt
 TASK_PROMPT="Seed: $SEED.
 
 $(cat "$TASK_DIR/instruction.md")
@@ -84,25 +85,25 @@ bash /task/tests/test.sh
 
 这会输出分数(0-1)。确保在修复后运行这一步。"
 
-# Docker 运行参数(通用)
-# task/workspace → /workspace (train.py)
-# task/          → /task (instruction.md, test.sh, solution/)
-# trajectories   → /trajectories (轨迹输出,不进 /workspace 避免只读冲突)
-# 注意:不用 --rm,保留容器以便 docker commit 保存 Kimi 的修复
-CONTAINER_NAME="task1_$(date +%s)"
-SNAPSHOT_IMAGE="task1_snapshot_$(date +%s)"
-DOCKER_ARGS="--name $CONTAINER_NAME --gpus all
-  -v $TASK_DIR/workspace:/workspace:ro
-  -v $TASK_DIR:/task:ro
-  -v $TRAJ_DIR:/trajectories
-  -v $KIMI_CONFIG:/root/.kimi-code/config.toml:ro
-  -e ANTHROPIC_API_KEY=$ANTHROPIC_KEY"
+CONTAINER_NAME="${TASK_NAME}_$(date +%s)"
+SNAPSHOT_IMAGE="${TASK_NAME}_snapshot_$(date +%s)"
 
-# [1/3] 启动 Kimi Code
 echo ""
 echo ">>> [1/3] 启动 Kimi Code (超时 ${TIMEOUT}s)..."
 timeout "$TIMEOUT" \
-docker run $DOCKER_ARGS \
+docker run --name $CONTAINER_NAME --gpus all \
+  --add-host="github.com:127.0.0.1" \
+  --add-host="raw.githubusercontent.com:127.0.0.1" \
+  --add-host="codeload.github.com:127.0.0.1" \
+  --add-host="objects.githubusercontent.com:127.0.0.1" \
+  --add-host="pypi.org:127.0.0.1" \
+  --add-host="files.pythonhosted.org:127.0.0.1" \
+  -v "$TASK_DIR/workspace:/workspace:ro" \
+  -v "$TASK_DIR/tests:/task/tests:ro" \
+  -v "$TASK_DIR/instruction.md:/task/instruction.md:ro" \
+  -v "$TRAJ_DIR:/trajectories" \
+  -v "$KIMI_CONFIG:/root/.kimi-code/config.toml:ro" \
+  -e "ANTHROPIC_API_KEY=$ANTHROPIC_KEY" \
   task1 \
   kimi -p "$TASK_PROMPT" \
     --model "$MODEL" \
@@ -110,7 +111,6 @@ docker run $DOCKER_ARGS \
     2>"$TRAJ_DIR/stderr.log" \
     | grep '^{.*}$' > "$TRAJ_DIR/trajectory.jsonl" || true
 
-# [2/3] 保存 Kimi 的修复,在快照镜像里跑 test.sh
 echo ">>> [2/3] Kimi Code 结束,保存修复状态..."
 docker commit "$CONTAINER_NAME" "$SNAPSHOT_IMAGE" > /dev/null 2>&1
 docker rm -f "$CONTAINER_NAME" > /dev/null 2>&1
@@ -118,27 +118,23 @@ docker rm -f "$CONTAINER_NAME" > /dev/null 2>&1
 echo ">>> 运行测试..."
 docker run --rm --gpus all \
   -v "$TASK_DIR/workspace:/workspace:ro" \
-  -v "$TASK_DIR:/task:ro" \
+  -v "$TASK_DIR/tests:/task/tests:ro" \
   "$SNAPSHOT_IMAGE" \
   bash -c "
     bash /task/tests/test.sh 2>/dev/null || true
     cat /logs/verifier/reward.txt 2>/dev/null || echo '0.0'
   " > "$TRAJ_DIR/reward.txt" 2>/dev/null || true
 
-# 清理快照镜像
 docker rmi "$SNAPSHOT_IMAGE" > /dev/null 2>&1 || true
 
-# [3/3] 汇总
 REWARD=$(tail -1 "$TRAJ_DIR/reward.txt" 2>/dev/null | tr -d '[:space:]')
 REWARD="${REWARD:-0.0}"
 
-TURNS=$(grep -c '"type":"assistant"' "$TRAJ_DIR/trajectory.jsonl" 2>/dev/null || echo "0")
-TOOL_CALLS=$(grep -c '"type":"tool_use"' "$TRAJ_DIR/trajectory.jsonl" 2>/dev/null || echo "0")
+TURNS=$(grep -c '"role":"assistant"' "$TRAJ_DIR/trajectory.jsonl" 2>/dev/null || echo "0")
+TOOL_CALLS=$(grep -c '"tool_calls"' "$TRAJ_DIR/trajectory.jsonl" 2>/dev/null || echo "0")
 
-# 清理临时 kimi config
 rm -f "$KIMI_CONFIG"
 
-# 记录结果
 echo "{\"task\":\"$TASK_NAME\",\"model\":\"$MODEL\",\"seed\":$SEED,\"reward\":$REWARD,\"turns\":$TURNS,\"tool_calls\":$TOOL_CALLS,\"trajectory\":\"$TRAJ_DIR/trajectory.jsonl\"}" \
   | tee "$TRAJ_DIR/result.jsonl"
 

@@ -10,12 +10,6 @@
 /calibrate-task [--task-dir tasks/taskN-xxx] [--model kimi-code/kimi-for-coding] [--runs 3] [--budget 10]
 ```
 
-默认值:
-- task-dir: 当前目录下的第一个 taskN-* 文件夹
-- model: kimi-code/kimi-for-coding
-- runs: 3
-- budget: 10 (美元)
-
 ## 执行流程
 
 ### Step 1: 环境检查
@@ -28,34 +22,14 @@ docker images task1 --format '{{.ID}}'
 cat .secrets/kimi_api_key | head -c 10
 ```
 
-如果镜像不存在,先用 `/generate-task` 生成任务。
-
-### Step 2: 清理旧轨迹
-
-```bash
-cd <task-dir>/trajectories
-rm -rf */
-> calibration_results.jsonl
-```
-
-### Step 3: 运行校准
+### Step 2: 运行校准
 
 ```bash
 cd <task-dir>
 ./calibrate.sh <model> <budget> <runs>
 ```
 
-`calibrate.sh` 内部流程:
-1. 循环 `runs` 次,每次不同 seed
-2. 调用 `run.sh` 运行一次:
-   - 启动 Docker 容器(不销毁)
-   - 运行 Kimi Code
-   - `docker commit` 保存修复状态
-   - 在快照容器里跑 `test.sh`
-   - 记录 reward
-3. 汇总结果到 `calibration_results.jsonl`
-
-### Step 4: 分析结果
+### Step 3: 分析结果
 
 读取 `calibration_results.jsonl`:
 
@@ -70,14 +44,16 @@ avg_reward = sum(r['reward'] for r in results) / len(results)
 - avg_reward 0.3-0.7 → 合适 ✓
 - avg_reward < 0.3 → 太难,需要加提示
 
-### Step 5: 分析轨迹
+### Step 4: 分析轨迹(必须!)
 
-如果 reward 不合适,需要分析轨迹找到原因:
+**每次运行完测试后都必须分析轨迹**,理解 agent 的行为模式。
 
 ```bash
-# 查看轨迹
+# 查看轨迹目录
 ls trajectories/
-wc -c trajectories/*/trajectory.jsonl
+
+# 统计步数
+wc -l trajectories/*/trajectory.jsonl
 
 # 分析 Kimi 的推理链
 python3 -c "
@@ -94,35 +70,46 @@ for i, tc in enumerate(steps):
 "
 ```
 
-### Step 6: 调整难度
+**分析要点**:
+1. **定位路径**:agent 怎么找到 bug 的?是系统搜索还是偶然发现?
+2. **关键转折**:在哪一步发现了 bug?花了多少步?
+3. **失败原因**:如果 reward < 0.6,卡在哪里?为什么?
+4. **hack 尝试**:有没有尝试绕过约束?
+5. **上网搜索**:有没有用 WebSearch/WebFetch?(如果用了,需要加 deny 规则)
 
-根据轨迹分析结果调整。**核心原则**:找到 agent 的"秒杀"路径,然后堵死它。
+**轨迹分析模板**:
+
+```markdown
+## 轨迹分析
+
+| 维度 | 结果 |
+|------|------|
+| 总步数 | xxx |
+| 定位方式 | 系统搜索 / 偶然发现 / 提示引导 |
+| 关键转折 | 第 N 步发现 xxx |
+| 修复方式 | 修改了 xxx 文件的 xxx 行 |
+| 失败原因 | (如果失败)卡在 xxx |
+| hack 尝试 | 有/无 |
+```
+
+### Step 5: 调整难度
+
+根据轨迹分析结果调整。详见 `generate-task.md` Phase 4.5 的 Bug 构造策略。
 
 **太简单**(agent < 100 步就修完) → 增加难度:
-1. **删除 .git 历史**:防止 `git show` 直接看到改动
-2. **用复合 bug**:注入 2-3 个 bug,每个在不同条件下触发
-3. **用隐晦症状替代崩溃**:如精度差、收敛慢、偶发错误
-4. **用多层封装模糊定位**:多个底层调用,bug 藏在其中一个
-5. **用条件触发**:bug 只在特定输入/条件下触发
-6. **用可编译诱饵**:不只是注释,是看起来像真 bug 的代码
+- 用删除代码替代添加代码
+- 用条件触发替代直接触发
+- 增加诱饵数量
+- 增加跨函数依赖
 
 **太难**(agent > 500 步或 reward < 0.2) → 降低难度:
-1. **减少 bug 数量**:从 3 个减到 1-2 个
-2. **简化触发条件**:从条件触发改为始终触发
-3. **在 instruction.md 里加提示**:暗示 bug 所在的层或类型
-4. **简化封装结构**:减少中间层
-5. **提供调试工具**:允许 agent 使用特定的调试脚本
+- 减少 bug 数量
+- 简化触发条件
+- 在 instruction.md 里加提示
 
-**关键经验**:
-- 单一 bug 太容易被秒,复合 bug 才有挑战性
-- 诱饵用纯注释太容易排除,要用看起来像真 bug 的代码
-- 测试必须覆盖多种场景,否则 agent 修了 A 还有 B
-- Bug 触发条件必须不同,否则修一个就全修了
-- 用质量指标(accuracy/正确率)替代崩溃检查,更难通过
+### Step 6: 重新校准
 
-### Step 7: 重新校准
-
-调整后重新运行 Step 3-6,直到 avg_reward 在 0.3-0.7 之间。
+调整后重新运行 Step 2-5,直到 avg_reward 在 0.3-0.7 之间。
 
 ## 输出
 
@@ -133,12 +120,8 @@ for i, tc in enumerate(steps):
   平均 reward: 0.45
   判定: 合适 ✓
 
-轨迹:
-  seed1: reward=0.50, 180 步, 修复方式: ...
-  seed2: reward=0.40, 220 步, 修复方式: ...
-  seed3: reward=0.45, 200 步, 修复方式: ...
+轨迹分析:
+  seed1: reward=0.50, 180 步, 定位方式: 系统搜索 CUDA kernel
+  seed2: reward=0.40, 220 步, 定位方式: 通过梯度对比定位 LayerNorm
+  seed3: reward=0.45, 200 步, 定位方式: 读 inject_bug.py(被删)
 ```
-
-## 参考
-
-Task 1 校准结果见 `tasks/task1-pytorch-cuda-index/README.md` §校准结果。

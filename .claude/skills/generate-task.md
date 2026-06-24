@@ -113,6 +113,129 @@ def make_data(batch_size, device):
 - 注入 15-20 个诱饵
 - 打印注入结果
 
+### Phase 4.5: Bug 构造策略
+
+**核心发现**:删除代码比添加代码更难被 agent 修复。
+
+#### 策略 1: 删除关键代码(最难)
+
+删掉一行必要的代码,agent 需要理解缺失了什么并补回来。
+
+```c
+// 原始代码
+__syncthreads();
+return WelfordDataLN(sigma2, mean);
+
+// Bug: 删除 __syncthreads
+return WelfordDataLN(sigma2, mean);
+```
+
+**为什么难**:
+- agent 看到的是"正常代码",没有可疑的修改
+- 需要理解并发语义才知道少了 `__syncthreads`
+- `git diff` 无法使用(已删除 .git)
+- 需要对比参考实现才能发现缺失
+
+**Task 1 实测**:删除 `__syncthreads` 的 race condition bug,Kimi 246 步都没修完。
+
+#### 策略 2: 条件触发(次难)
+
+bug 只在特定条件下触发,agent 需要找到触发条件。
+
+```c
+// Bug: 只在方差很小时翻转符号
+T_ACC rstd_val = (sigma2 > 0.5 && sigma2 < 2.0)
+    ? -rsqrt(sigma2 + eps)
+    : rsqrt(sigma2 + eps);
+```
+
+**为什么难**:
+- 小 batch 测试可能通过(方差不在范围内)
+- 大 batch 才触发,agent 容易以为修完了
+- 需要理解数值范围才能定位
+
+#### 策略 3: 跨 kernel 依赖(较难)
+
+bug 跨越多个函数/文件,需要理解调用链。
+
+```c
+// kernel A: 设置标志
+if (threadIdx.x == 0 && blockIdx.x == 0) {
+    _ln_flag = true;
+}
+
+// kernel B: 使用标志(但标志可能还没设置)
+b[index] = -scale * (mean[ng] + 0.1 * _ln_flag);
+```
+
+**为什么难**:
+- 单独看每个 kernel 都"正确"
+- 需要理解 CUDA 执行模型(不同 block 并行)
+- 需要追踪跨函数的数据流
+
+#### 策略 4: 诱饵比真 bug 更多(干扰)
+
+注入 30+ 个诱饵,只有 3-5 个是真 bug。
+
+```python
+# 诱饵(看起来像 bug 但不影响功能)
+float _sigma2_floor = 1e-6f;  # 声明但未使用
+float _eps_override = 1e-5f;  # 声明但未使用
+
+# 真 bug(隐藏在诱饵中)
+T_ACC rstd_val = (sigma2 > 0.5 && sigma2 < 2.0)
+    ? -rsqrt(sigma2 + eps)
+    : rsqrt(sigma2 + eps);
+```
+
+**为什么难**:
+- agent 需要逐个检查每个修改
+- 诱饵消耗 agent 的注意力和预算
+- 真 bug 藏在大量诱饵中
+
+#### 策略 5: 数值精度陷阱(隐蔽)
+
+微小的数值变化,不会崩溃但影响训练质量。
+
+```c
+// Bug: eps 放大 100 倍
+rsqrt(var + eps * 100.0f)  // 应该是 eps
+
+// Bug: 梯度累加方向错误
+stats_x2 -= c_loss * gamma * (c_h - mean) * rstd;  // 应该是 +=
+```
+
+**为什么难**:
+- 不会崩溃,不会 NaN
+- 只是训练精度下降
+- 需要数值分析才能发现
+
+#### Bug 类型难度排名
+
+| 难度 | 类型 | 原因 |
+|------|------|------|
+| ⭐⭐⭐⭐⭐ | 删除关键代码 | 看不到异常,需要理解缺失 |
+| ⭐⭐⭐⭐ | 条件触发 | 可能测试通过,大场景才失败 |
+| ⭐⭐⭐⭐ | 跨函数/文件依赖 | 需要理解调用链 |
+| ⭐⭐⭐ | 诱饵淹没 | 消耗注意力,但能逐个排除 |
+| ⭐⭐⭐ | 数值精度 | 不崩溃,需要数值分析 |
+| ⭐⭐ | 符号翻转 | 有迹可循,对比即可发现 |
+| ⭐ | 添加多余代码 | 最容易发现和删除 |
+
+#### 实战组合建议
+
+```
+最佳组合(3 个真 bug + 30 个诱饵):
+1. 删除 __syncthreads (race condition)
+2. 条件触发的符号翻转 (sigma2 范围)
+3. 跨 kernel 的标志位依赖
+
+诱饵分布:
+- 10 个声明但未使用的变量
+- 10 个不影响功能的常量修改
+- 10 个注释/死代码
+```
+
 ### Phase 5: 设计 instruction.md
 
 **核心原则**:不暴露任何 bug 细节。
@@ -220,6 +343,36 @@ CMD ["/bin/bash"]
 
 ### Phase 8: 验证 + 校准
 
+**⚠️ 每次运行前必须用 oracle 验证 test.sh！**
+
+在跑 Kimi/Claude 测试之前,必须先用 oracle fix 验证 test.sh 能正确给分:
+
+```bash
+# 1. 启动容器(不运行 agent)
+docker run --rm --gpus all \
+  -v $(pwd)/task/workspace:/workspace:ro \
+  -v $(pwd)/task:/task:ro \
+  task_image bash -c "
+    # 2. 应用 oracle fix
+    bash /task/solution/solve.sh
+    
+    # 3. 运行 test.sh
+    bash /task/tests/test.sh
+    
+    # 4. 检查分数应为 1.0
+    cat /logs/verifier/reward.txt
+  "
+```
+
+**如果 oracle 分数不是 1.0,说明 test.sh 有 bug,必须先修复再跑 agent 测试！**
+
+常见问题:
+- 梯度检查阈值太严/太松 → 调整阈值
+- accuracy 阈值不合理 → 用梯度检查替代
+- anti-hack 误报 → 检查 grep 模式
+- 超时 → 减少训练步数
+
+验证通过后,再执行:
 1. **验证 bug 生效**:运行用户脚本,确认症状出现
 2. **验证基线正常**:在无 bug 环境运行,确认症状不出现
 3. **验证 git 不可用**:在容器内运行 `git log`,应失败
@@ -244,6 +397,284 @@ tasks/taskN-<name>/
 ## 参考实现
 
 - Task 1 (PyTorch CUDA): `tasks/task1-pytorch-cuda-index/README.md`
+
+---
+
+## run.sh 模板
+
+每个 task 需要一个 `run.sh` 用于单次运行。**必须使用 Docker 容器模式**,不能直接在本地运行。
+
+关键设计:
+1. **Docker 容器运行**:agent 在容器内执行,不影响宿主机
+2. **docker commit**:保存 agent 的修复状态
+3. **快照容器测试**:在 commit 后的容器里跑 test.sh
+4. **API key 注入**:通过环境变量或挂载,不写入镜像
+
+```bash
+#!/bin/bash
+# run.sh — 用 Kimi Code 跑单次任务 + 保存轨迹 + 拿 reward
+# 用法: ./run.sh [model] [budget_usd] [seed] [timeout]
+
+set -e
+
+MODEL="${1:-kimi-code/kimi-for-coding}"
+BUDGET="${2:-10}"
+SEED="${3:-42}"
+TIMEOUT="${4:-3600}"
+
+MODEL_SAFE=$(echo "$MODEL" | tr '/' '_')
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+TASK_DIR="$SCRIPT_DIR/task"
+RUN_ID="$(date +%Y%m%d_%H%M%S)_${MODEL_SAFE}_seed${SEED}"
+TRAJ_DIR="$SCRIPT_DIR/trajectories/$RUN_ID"
+mkdir -p "$TRAJ_DIR"
+
+TASK_NAME="$(basename "$SCRIPT_DIR")"
+
+# 读取 API keys
+SECRETS_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)/.secrets"
+ANTHROPIC_KEY=$(cat "$SECRETS_DIR/claude_api_key" 2>/dev/null | tr -d '[:space:]')
+KIMI_KEY=$(cat "$SECRETS_DIR/kimi_api_key" 2>/dev/null | tr -d '[:space:]')
+
+# 生成 Kimi config.toml(临时)
+KIMI_CONFIG="$TRAJ_DIR/kimi_config.toml"
+cat > "$KIMI_CONFIG" << EOF
+default_model = "$MODEL"
+default_permission_mode = "yolo"
+
+[providers."managed:kimi-code"]
+type = "kimi"
+base_url = "https://api.kimi.com/coding/v1"
+api_key = "$KIMI_KEY"
+
+[models."kimi-code/kimi-for-coding"]
+provider = "managed:kimi-code"
+model = "kimi-for-coding"
+max_context_size = 262144
+
+[loop_control]
+max_steps_per_turn = 500
+max_retries_per_step = 3
+
+[[permission.rules]]
+decision = "allow"
+pattern = "Read"
+
+[[permission.rules]]
+decision = "allow"
+pattern = "Write"
+
+[[permission.rules]]
+decision = "allow"
+pattern = "Bash"
+EOF
+
+# 构造任务 prompt
+TASK_PROMPT="Seed: $SEED.
+
+$(cat "$TASK_DIR/instruction.md")
+
+## 完成后的验证步骤
+
+修复 bug 后,运行以下命令验证:
+
+\`\`\`bash
+bash /task/tests/test.sh
+\`\`\`
+
+这会输出分数(0-1)。确保在修复后运行这一步。"
+
+# Docker 运行参数
+CONTAINER_NAME="${TASK_NAME}_$(date +%s)"
+SNAPSHOT_IMAGE="${TASK_NAME}_snapshot_$(date +%s)"
+
+# [1/3] 启动 Kimi Code
+echo ">>> [1/3] 启动 Kimi Code (超时 ${TIMEOUT}s)..."
+timeout "$TIMEOUT" \
+docker run --name $CONTAINER_NAME --gpus all \
+  -v "$TASK_DIR/workspace:/workspace:ro" \
+  -v "$TASK_DIR:/task:ro" \
+  -v "$TRAJ_DIR:/trajectories" \
+  -v "$KIMI_CONFIG:/root/.kimi-code/config.toml:ro" \
+  -e "ANTHROPIC_API_KEY=$ANTHROPIC_KEY" \
+  TASK_IMAGE_NAME \
+  kimi -p "$TASK_PROMPT" \
+    --model "$MODEL" \
+    --output-format stream-json \
+    2>"$TRAJ_DIR/stderr.log" \
+    | grep '^{.*}$' > "$TRAJ_DIR/trajectory.jsonl" || true
+
+# [2/3] 保存修复状态,跑测试
+echo ">>> [2/3] 保存修复状态..."
+docker commit "$CONTAINER_NAME" "$SNAPSHOT_IMAGE" > /dev/null 2>&1
+docker rm -f "$CONTAINER_NAME" > /dev/null 2>&1
+
+echo ">>> 运行测试..."
+docker run --rm --gpus all \
+  -v "$TASK_DIR/workspace:/workspace:ro" \
+  -v "$TASK_DIR:/task:ro" \
+  "$SNAPSHOT_IMAGE" \
+  bash -c "
+    bash /task/tests/test.sh 2>/dev/null || true
+    cat /logs/verifier/reward.txt 2>/dev/null || echo '0.0'
+  " > "$TRAJ_DIR/reward.txt" 2>/dev/null || true
+
+docker rmi "$SNAPSHOT_IMAGE" > /dev/null 2>&1 || true
+
+# [3/3] 汇总结果
+REWARD=$(tail -1 "$TRAJ_DIR/reward.txt" 2>/dev/null | tr -d '[:space:]')
+REWARD="${REWARD:-0.0}"
+TURNS=$(grep -c '"role":"assistant"' "$TRAJ_DIR/trajectory.jsonl" 2>/dev/null || echo "0")
+TOOL_CALLS=$(grep -c '"tool_calls"' "$TRAJ_DIR/trajectory.jsonl" 2>/dev/null || echo "0")
+rm -f "$KIMI_CONFIG"
+
+echo "{\"task\":\"$TASK_NAME\",\"model\":\"$MODEL\",\"seed\":$SEED,\"reward\":$REWARD,\"turns\":$TURNS,\"tool_calls\":$TOOL_CALLS}" | tee "$TRAJ_DIR/result.jsonl"
+```
+
+**注意**:
+- `--gpus all` 只在需要 GPU 的 task 使用(CUDA/OpenCV 等)
+- `TASK_IMAGE_NAME` 替换为实际镜像名(如 `task1-pytorch-cuda-index`)
+- grep 模式是 `"role":"assistant"` 和 `"tool_calls"`,不是 `"type":"assistant"` 和 `"type":"tool_use"`
+
+---
+
+## calibrate.sh 模板
+
+每个 task 需要一个 `calibrate.sh` 用于多次校准运行。
+
+```bash
+#!/bin/bash
+# calibrate.sh — 多 seed 校准难度
+# 用法: ./calibrate.sh [model] [budget] [num_runs] [timeout]
+
+set -e
+
+MODEL="${1:-kimi-code/kimi-for-coding}"
+BUDGET="${2:-10}"
+NUM_RUNS="${3:-3}"
+TIMEOUT="${4:-3600}"
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+RESULTS_FILE="$SCRIPT_DIR/trajectories/calibration_results.jsonl"
+
+mkdir -p "$SCRIPT_DIR/trajectories"
+> "$RESULTS_FILE"
+
+TASK_NAME="$(basename "$SCRIPT_DIR")"
+
+echo "========================================="
+echo " 校准任务: $TASK_NAME"
+echo " 模型:     $MODEL"
+echo " 运行次数: $NUM_RUNS"
+echo "========================================="
+
+for SEED in $(seq 1 $NUM_RUNS); do
+    echo ""
+    echo ">>> Run $SEED / $NUM_RUNS (seed=$SEED)"
+    echo "-----------------------------------------"
+
+    RESULT=$("$SCRIPT_DIR/run.sh" "$MODEL" "$BUDGET" "$SEED" "$TIMEOUT" 2>&1 | tee /dev/stderr | grep '^{' | tail -1 || true)
+
+    if [ -n "$RESULT" ]; then
+        echo "$RESULT" >> "$RESULTS_FILE"
+    fi
+done
+
+echo ""
+echo "========================================="
+echo " 校准结果汇总"
+echo "========================================="
+
+python3 -c "
+import json, sys
+from collections import defaultdict
+
+results = []
+for line in open('$RESULTS_FILE'):
+    line = line.strip()
+    if line:
+        try:
+            results.append(json.loads(line))
+        except:
+            pass
+
+if not results:
+    print('无有效结果')
+    sys.exit(0)
+
+print(f'有效运行: {len(results)}')
+print()
+
+by_model = defaultdict(list)
+for r in results:
+    by_model[r['model']].append(r)
+
+print(f'{\"模型\":<20} {\"平均分\":<10} {\"修复率\":<10} {\"平均轮数\":<10}')
+print('-' * 50)
+for model in sorted(by_model.keys()):
+    rs = by_model[model]
+    avg_reward = sum(r['reward'] for r in rs) / len(rs)
+    fix_rate = sum(1 for r in rs if r.get('reward', 0) >= 0.8) / len(rs) * 100
+    avg_turns = sum(r.get('turns', 0) for r in rs) / len(rs)
+    print(f'{model:<20} {avg_reward:<10.2f} {fix_rate:<10.0f}% {avg_turns:<10.0f}')
+
+print()
+avg_all = sum(r['reward'] for r in results) / len(results)
+if avg_all > 0.7:
+    print(f'判定: 平均分 {avg_all:.2f} > 0.7 → 太简单,需要加难度')
+elif avg_all < 0.3:
+    print(f'判定: 平均分 {avg_all:.2f} < 0.3 → 太难,需要加提示或降低难度')
+else:
+    print(f'判定: 平均分 {avg_all:.2f} 在 0.3-0.7 → 难度合适 ✓')
+"
+```
+
+---
+
+## Docker 镜像构建经验
+
+### 构建顺序
+
+1. **先构建基础镜像**(如果需要):`Dockerfile.base` → `docker build -t xxx-base`
+2. **再构建 task 镜像**:`Dockerfile` → `docker build -t taskN`
+3. **验证镜像**:运行简单命令确认 bug 注入正确
+
+### 常见构建失败及解决
+
+| 失败原因 | 解决方法 |
+|---------|---------|
+| git clone HTTPS 失败 | 改用 SSH: `git clone git@github.com:...` |
+| 镜像拉取超时 | 用镜像源: `docker.1ms.run/xxx` |
+| apt-get 包不存在 | 添加 APT 源或换基础镜像 |
+| pip install 编译失败 | 用预编译包或简化依赖 |
+| inject_bug.py 找不到文件 | 用 `glob.glob()` 动态搜索 |
+| .so 导入失败 | 用 `python setup.py build_ext --inplace` |
+| 自定义基础镜像不存在 | 先创建 `Dockerfile.base` |
+
+### 并行构建
+
+机器配置足够时,可以并行构建多个镜像:
+
+```bash
+DOCKER_BUILDKIT=1 docker build -t task1 ... > /tmp/build_task1.log 2>&1 &
+DOCKER_BUILDKIT=1 docker build -t task2 ... > /tmp/build_task2.log 2>&1 &
+wait
+```
+
+### 镜像大小优化
+
+- 使用 `python:3.11-slim` 而非 `python:3.11`
+- 删除 `.git` 目录(节省 50-80%)
+- 使用 `--no-cache-dir` 安装 pip 包
+- 合并 RUN 命令减少层数
+
+### 验证清单
+
+构建后必须验证:
+1. ✅ Bug 注入正确(grep 检查)
+2. ✅ .git 已删除
+3. ✅ 基本功能可用(import / 运行测试)
+4. ✅ train.py / model.py 可访问(通过挂载)
 
 ---
 
@@ -696,4 +1127,115 @@ fi
 1. 看 agent 的前 10 步做了什么(通常是读文件、运行脚本)
 2. 找到 agent 定位 bug 的关键步骤(通常是 grep / 对比 / 测试)
 3. 在那个步骤加障碍(删除 git / 增加诱饵 / 改变触发条件)
-- **Send/Sync**:跨线程安全问题
+
+### 教训 11:每次运行前用 oracle 验证 test.sh
+
+**task1 数据**:test.sh 从 accuracy 检查改为梯度检查,发现 accuracy 检查不可靠(随机数据方差太大)。oracle fix 后 accuracy 也只有 18-34%,无法区分 bug 存在和修复。
+
+**通用原则**:每次跑 agent 测试前,必须先用 oracle fix 验证 test.sh 能给满分。
+
+**验证方法**:
+```bash
+docker run --rm --gpus all \
+  -v ... \
+  task_image bash -c "
+    bash /task/solution/solve.sh  # 应用 oracle fix
+    bash /task/tests/test.sh      # 应该输出 1.0
+  "
+```
+
+**如果 oracle 分数不是 1.0,说明 test.sh 有 bug,必须先修复！**
+
+常见问题:
+- accuracy 阈值不合理(随机数据方差大)→ 改用梯度检查
+- 梯度检查阈值太严/太松 → 用 oracle 测试确定合适阈值
+- anti-hack 误报 → 检查 grep 模式是否过于宽泛
+- 超时 → 减少训练步数或增加超时时间
+
+### 教训 12:禁止 agent 访问 GitHub 下载参考代码
+
+**task4 数据**:Kimi 用 `curl` 从 GitHub 下载 JAX 源码对比,直接找到所有 bug。
+
+**通用原则**:agent 可能用 `curl`/`wget` 从 GitHub 下载参考实现,对比找到 bug。必须在 Docker 运行时封锁外部网络。
+
+**实现**:
+```bash
+docker run \
+  --add-host="github.com:127.0.0.1" \
+  --add-host="raw.githubusercontent.com:127.0.0.1" \
+  --add-host="codeload.github.com:127.0.0.1" \
+  --add-host="objects.githubusercontent.com:127.0.0.1" \
+  --add-host="pypi.org:127.0.0.1" \
+  --add-host="files.pythonhosted.org:127.0.0.1" \
+  ...
+```
+
+**注意**:需要同时封锁 `raw.githubusercontent.com` 和 `objects.githubusercontent.com`,否则 agent 可以绕过。
+
+### 教训 13:删除 .gitignore 防止时间戳泄露
+
+**task4 数据**:Kimi 用 `find . -name '*.py' -newer .gitignore` 找到被修改的文件。
+
+**通用原则**:`.gitignore` 的时间戳可以作为参考点,agent 可以用 `find -newer` 找到被修改的文件。必须删除 `.gitignore`。
+
+**实现**:
+```dockerfile
+RUN rm -rf /build/source/.git /build/source/.gitignore
+```
+
+### 教训 14:touch 所有文件标准化时间戳
+
+**task4 数据**:Kimi 用 `find . -newermt '2026-06-24 13:33'` 按绝对时间找被修改的文件。
+
+**通用原则**:即使删除了 `.gitignore`,agent 仍可用绝对时间戳找被修改的文件。必须 touch 所有文件让时间戳一致。
+
+**实现**:
+```dockerfile
+RUN find $SOURCE_DIR -name "*.py" -exec touch {} +
+```
+
+### 教训 15:inject_bug.py 和 solve.sh 的模式必须精确匹配源码
+
+**task1 数据**:inject_bug.py 用 `return (input > 0) ? input : input * negval` 但实际源码是 `return aop > opmath_t(0) ? aop : aop * negval`,导致 bug 没注入。
+
+**通用原则**:inject_bug.py 和 solve.sh 的字符串模式必须精确匹配源码,包括变量名、类型、空格。任何不匹配都会导致 bug 没注入或没修复。
+
+**验证方法**:
+```bash
+# 在容器里验证模式是否匹配
+docker run --rm task_image python3 -c "
+with open('/path/to/source.cu') as f: content = f.read()
+old = 'exact pattern here'
+print('Pattern found:', old in content)
+"
+```
+
+### 教训 16:oracle 测试必须验证 buggy 版本失败
+
+**task4 数据**:buggy 版本也得 1.0 分,说明 bug 没被 test 检测到。
+
+**通用原则**:oracle 测试必须分两步:
+1. 测试 buggy 版本 → 分数应该 < 1.0
+2. 测试 fixed 版本 → 分数应该 = 1.0
+
+如果 buggy 版本也得 1.0,说明 test 没有检测到 bug,必须加强 test。
+
+### 教训 18:诱饵必须和真 bug 使用相同模式
+
+**task1 数据**:诱饵用 `if (mean_val > T_ACC(100))` 防御代码,agent 直接忽略。真 bug 用 `* (T_ACC(1) - T_ACC(0.5) * condition)` 条件乘法,agent 一眼认出。
+
+**通用原则**:诱饵必须和真 bug 使用完全相同的代码模式,只是条件/参数不同。agent 无法区分真假。
+
+**好的诱饵**:
+```c
+// 真 bug: sigma2 ∈ [0.99, 1.01] 时乘以 0.5
+result *= (1.0 - 0.5 * (sigma2 > 0.99 && sigma2 < 1.01));
+// 诱饵: sigma2 ∈ [0.49, 0.51] 时乘以 0.4 (不同条件,不同参数)
+result *= (1.0 - 0.4 * (sigma2 > 0.49 && sigma2 < 0.51));
+```
+
+**坏的诱饵**:
+```c
+// 看起来像防御代码,agent 直接忽略
+if (mean_val > T_ACC(100)) { mean_val = T_ACC(100); }
+```

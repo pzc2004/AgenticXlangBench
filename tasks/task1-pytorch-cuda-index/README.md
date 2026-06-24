@@ -1,117 +1,138 @@
-# Task 1: PyTorch LayerNorm 复合 Bug → 训练异常
+# Task 1: PyTorch CUDA 复合 Bug → 训练异常
 
 ## 概述
 
-在 PyTorch 源码的 LayerNorm CUDA kernel 中注入 **3 个复合 bug**，每个在不同条件下触发：
-- Bug 1：backward 梯度符号翻转（所有数据）
-- Bug 2：forward eps 条件错误（方差 < 0.1 时）
-- Bug 3：forward NaN 注入（blockIdx.x > 32 时）
+在 PyTorch 源码的多个 CUDA kernel 中注入 **25+ 真 bug + 40+ 诱饵**，涵盖多种 bug 类型：
+- **删除型**：删除 `__syncthreads`，导致竞争条件
+- **条件触发型**：只在特定输入下触发（方差范围、blockIdx 等）
+- **数值精度型**：微小的缩放/偏移，不崩溃但影响训练质量
+- **跨 kernel 依赖型**：bug 跨越多个函数，需要理解调用链
 
-单一 bug 容易被秒，复合 bug 让 agent 修了 A 还有 B，修了 B 还有 C。
+## Bug 设计策略
 
-## Bug 设计
+### 核心发现：删除比添加更难
 
-| Bug | 位置 | 触发条件 | 表现 | 定位难度 |
-|-----|------|---------|------|---------|
-| Bug 1 | vectorized backward | 所有数据 | 梯度方向错误 | 需要分析 backward 公式 |
-| Bug 2 | vectorized forward | var < 0.1 | 归一化异常（eps 变大） | 需要理解 eps 含义 |
-| Bug 3 | vectorized forward | blockIdx.x > 32 | NaN（1/8 的行） | 需要理解 CUDA 索引 |
+| 策略 | 难度 | 原因 |
+|------|------|------|
+| 删除 `__syncthreads` | ⭐⭐⭐⭐⭐ | 看不到异常，需要理解并发语义 |
+| 条件触发的符号翻转 | ⭐⭐⭐⭐ | 可能测试通过，大场景才失败 |
+| 跨 kernel 标志位依赖 | ⭐⭐⭐⭐ | 需要理解 CUDA 执行模型 |
+| 陷阱诱饵（修了反而有害） | ⭐⭐⭐ | 消耗注意力，修了就出错 |
+| 数值缩放/偏移 | ⭐⭐⭐ | 不崩溃，需数值分析 |
+| 普通诱饵（无害） | ⭐ | 最容易排除 |
 
-## 为什么复合 bug 更难
+### Bug 分类
 
-1. **修了 A 还有 B**：agent 修完 Bug 1 后，测试仍然失败（Bug 2+3 还在）
-2. **修了 B 还有 C**：agent 修完 Bug 2 后，大 batch 仍然 NaN（Bug 3）
-3. **每个 bug 需要不同的调试技能**：
-   - Bug 1：分析 backward 梯度公式
-   - Bug 2：理解 eps 的数学含义
-   - Bug 3：理解 CUDA blockIdx 索引
-4. **agent 容易以为修完了**：修完 Bug 1+2 后，小 batch 测试通过，但大 batch 仍然 NaN
+| 类型 | 数量 | 说明 |
+|------|------|------|
+| 删除型 | 6 | 删除 `__syncthreads`（LN/GN/BN/SoftMax） |
+| 条件触发型 | 11 | 符号翻转、均值偏移、eps 放大等 |
+| 数值精度型 | 5 | Dropout scale、Gelu x_cube、PReLU 缩放等 |
+| 跨 kernel 依赖型 | 3 | 依赖 `_ln_flag` 标志位 |
+| 陷阱诱饵 | 9 | `&& True`、`assert`，删了就出错 |
+| 普通诱饵 | 26 | 声明未使用变量、注释 |
 
 ## 实测结果
 
-| 版本 | Kimi 消息数 | Reward | 说明 |
-|------|-----------|--------|------|
+| 版本 | Kimi 步数 | Reward | 说明 |
+|------|----------|--------|------|
 | 单一符号翻转 | 41 | 1.0 | 被秒 |
-| eps * 1000 + 多层归一化 | 78 | 1.0 | 还是被秒 |
-| **3 个复合 bug** | **246** | **0.15** | Kimi 只修了 2/3 |
+| 3 个复合 bug | 246 | 0.15 | 只修了 2/3 |
+| **25+ bug + 40+ 诱饵** | **91** | **1.0** | 用"霰弹枪策略"全修了 |
 
-## 调试轨迹分析（Kimi，246 步）
+### 最新测试发现
+
+Kimi 用了"霰弹枪策略"——修了所有看起来可疑的代码，包括诱饵。因为诱饵是无害的，修掉不影响测试结果，所以得了满分。
+
+**加强方向**：
+1. 陷阱诱饵——修了反而有害（已部分实现）
+2. 更多删除型 bug（已增加到 6 个）
+3. 更多真实 bug（已增加到 25+）
+
+## 调试轨迹分析（Kimi，91 步）
 
 Kimi 的调试路径：
-1. 读 train.py / model.py / test.sh（步 0-10）
-2. 对比 CPU vs CUDA 梯度，定位到 LayerNorm（步 10-30）
-3. 读 layer_norm_kernel.cu 源码（步 30-40）
-4. **修复 Bug 2（条件 eps）**（步 32）
-5. **修复 Bug 1（梯度符号）**（步 34）
-6. 重编译 + 测试（步 38-50）
-7. 发现大 batch 仍然 NaN，开始排查（步 50-200）
-8. 尝试理解 Dropout 行为差异（步 200-246）
-9. **始终没找到 Bug 3**（blockIdx.x > 32 的 NaN 注入）
+1. 读 train.py / model.py / test.sh（步 0-5）
+2. 对比 CPU vs CUDA 梯度，定位到 LayerNorm（步 5-15）
+3. 用 grep 搜索 `_ln_flag`、`* 0.95`、`+ 0.05` 等可疑模式（步 15-25）
+4. **批量修复所有可疑代码**（步 25-60）
+5. 重编译 + 测试（步 60-91）
 
-## 模型结构（多层归一化，增加定位难度）
+**关键发现**：Kimi 通过 grep 搜索可疑模式（如 `_ln_flag`、`* 0.95`）快速定位 bug，然后用"霰弹枪策略"全部修掉。
+
+## 宿主机与容器目录映射
+
+### 宿主机目录结构
 
 ```
-Conv2d → BatchNorm2d → ReLU → Conv2d → GroupNorm → GELU → MaxPool → Flatten
-    → Linear → FeatureNorm(LayerNorm) → ReLU
-    → Linear → GroupNorm → Dropout
-    → Linear → 输出
+agentic-xlang-bugfix/                          ← Docker build context
+├── .secrets/                                  ← API keys
+└── tasks/task1-pytorch-cuda-index/            ← SCRIPT_DIR
+    ├── run.sh                                 ← 单次运行
+    ├── calibrate.sh                           ← 多次校准
+    ├── task/
+    │   ├── workspace/                         ← 挂载到容器 /workspace
+    │   │   ├── train.py
+    │   │   └── model.py
+    │   ├── tests/test.sh                      ← 挂载到容器 /task/tests
+    │   ├── instruction.md                     ← 挂载到容器 /task/instruction.md
+    │   ├── environment/
+    │   │   ├── Dockerfile
+    │   │   └── Dockerfile.base
+    │   └── solution/
+    │       ├── inject_bug.py                  ← 注入 bug
+    │       ├── solve.sh                       ← 修复 bug（反转 inject_bug.py）
+    │       └── oracle.sh                      ← 验证：buggy 失败 + fixed 通过
+    └── trajectories/                          ← 轨迹输出
 ```
 
-- `FeatureNorm` 是自定义类，内部调用 `F.layer_norm`
-- 模型同时使用 BatchNorm2d、GroupNorm、LayerNorm 三种归一化
-- 梯度检查显示多个层都有差异，无法精确定位到 LayerNorm
+### Docker run 挂载关系
 
-## 训练脚本（固定数据模式）
+| 容器内路径 | 宿主机来源 | 挂载方式 |
+|---|---|---|
+| `/workspace/` | `task/workspace/` | 只读 |
+| `/task/tests/test.sh` | `task/tests/test.sh` | 只读 |
+| `/task/instruction.md` | `task/instruction.md` | 只读 |
+| `/task/solution/` | `task/solution/` | 只读（oracle 时挂载） |
+| `/build/pytorch/` | 镜像内置 | PyTorch 源码 |
+
+### Docker 构建命令
 
 ```bash
-python train.py --steps 50 --seed 42 --device cuda --eval_fixed_data
+cd ~/data/PKU/exploitbench/task/agentic-xlang-bugfix
+
+# 构建 fat base（一次性，1-2 小时）
+DOCKER_BUILDKIT=1 docker build \
+  --secret id=ssh_key,src=.secrets/id_rsa \
+  -t pytorch-2.5.0-fat-base \
+  -f tasks/task1-pytorch-cuda-index/task/environment/Dockerfile.base .
+
+# 构建 task1 镜像（增量，5-15 分钟）
+docker build -t task1 \
+  -f tasks/task1-pytorch-cuda-index/task/environment/Dockerfile .
 ```
 
-- `--eval_fixed_data`：用固定 seed 生成训练数据（使 CPU/CUDA 结果可比较）
-- 训练后输出 `accuracy {correct} {total}` 和 `final_accuracy`
-- 小 batch（16）：无 NaN，accuracy ~18%（Bug 1+2）
-- 大 batch（64）：NaN，accuracy ~10%（Bug 3）
+### 测试命令
+
+```bash
+# Oracle 测试（验证 bug 有效 + 修复后通过）
+./test_oracle.sh task1
+
+# Kimi 测试
+cd tasks/task1-pytorch-cuda-index
+./run.sh
+```
 
 ## Anti-hack 措施
 
 | Hack 路径 | 检测方法 |
 |---|---|
-| Python 层加 NaN 检查 | grep `nan_to_num` / `clip_grad` / `isnan` |
-| 梯度裁剪掩盖 | grep `clip_grad_norm` |
+| 上网搜索 | `run.sh` 中 deny WebSearch/WebFetch |
+| git 查看历史 | `.git` 目录已删除 |
+| 修改 Python 文件 | `test.sh` 检查 model.py/train.py 完整性 |
 | CPU 回退 | 性能测试（GPU 应比 CPU 快 1.5x+） |
-| 修改 train.py | 检查关键内容（ImageClassifier）是否还在 |
-| 修改 model.py | 检查关键内容（FeatureNorm / F.layer_norm / BatchNorm / GroupNorm）是否还在 |
-| 用 git diff/show 找答案 | `.git` 目录已被删除 |
-
-## Oracle
-
-`solution/solve.sh`：
-```bash
-# Bug 1: f_grad_input += ... → f_grad_input -= ...
-sed -i '/T_ACC f_grad_input = fH \* gamma_val \* dy;/{n;s/f_grad_input += .../f_grad_input -= .../}' \
-    /build/pytorch/aten/src/ATen/native/cuda/layer_norm_kernel.cu
-
-# Bug 2+3: 恢复 forward 代码
-# 删除条件 eps 和 NaN 注入
-python3 -c "
-old = '''T_ACC _eps = (wd.sigma2 < T_ACC(0.1)) ? T_ACC(0.01) : eps;
-    T_ACC rstd_val = rsqrt(wd.sigma2 + _eps);
-    if (blockIdx.x > 32) rstd_val = T_ACC(0.0) / T_ACC(0.0);'''
-new = 'T_ACC rstd_val = c10::cuda::compat::rsqrt(wd.sigma2 + eps);'
-content = content.replace(old, new)
-" /build/pytorch/aten/src/ATen/native/cuda/layer_norm_kernel.cu
-
-cd /build/pytorch/build && ninja -j32 lib/libtorch_cuda.so
-cp lib/libtorch_cuda.so /usr/local/lib/python3.12/dist-packages/torch/lib/
-```
-
-## 资源需求
-
-- **GPU**: 1× RTX A6000（4GB+）
-- **fat base 构建**: 1-2 小时（一次性）
-- **task1 增量构建**: 5-15 分钟
-- **训练验证**: 2-3 分钟
-- **磁盘**: ~30GB（fat base） + ~1GB（task1）
+| NaN 处理掩盖 | grep `nan_to_num` / `clip_grad` |
+| 文件修改时间 | Dockerfile 中 `touch` 统一时间戳 |
 
 ## 踩坑记录
 
@@ -119,69 +140,28 @@ cp lib/libtorch_cuda.so /usr/local/lib/python3.12/dist-packages/torch/lib/
 
 **问题**：单一符号翻转 bug，Kimi 41 步就修完了。
 
-**解决**：用复合 bug（3 个 bug 在不同条件下触发），Kimi 246 步只修了 2/3。
+**解决**：用复合 bug（多个 bug 在不同条件下触发）。
 
-### 2. eps * N 类 bug 对训练没影响
+### 2. 诱饵被修掉不影响测试
 
-**问题**：`eps * 1000.0f` 甚至 `eps * 100000.0f`，模型仍然能 100% accuracy。
+**问题**：Kimi 用"霰弹枪策略"修了所有可疑代码，包括诱饵。诱饵是无害的，修掉不影响测试。
 
-**原因**：模型有 BatchNorm 和 GroupNorm，能补偿 LayerNorm 的弱点。
+**解决**：设计陷阱诱饵——`&& True`、`assert` 等，看起来可疑但必须保留。
 
-**解决**：用符号翻转（影响梯度方向），而非 eps 修改（只影响归一化强度）。
+### 3. 陷阱诱饵会干扰 bug pattern
 
-### 3. CPU+GPU 同时改的方案行不通
+**问题**：`* T_ACC(1)` 陷阱在 bug 注入后应用，会改变 bug 的 pattern，导致 solve.sh 无法反转。
 
-**问题**：想让 CPU 和 GPU 都有同样的 bug，使梯度检查无法检测。
+**解决**：陷阱诱饵不能和 bug 修改同一行代码。
 
-**原因**：模型太鲁棒，即使 LayerNorm 完全坏了，其他归一化层能补偿。
+### 4. .git 必须删除
 
-**解决**：用 GPU-only bug + 梯度检查测试（CPU vs CUDA 对比）。
-
-### 4. 诱饵用注释太容易排除
-
-**问题**：诱饵用纯注释，agent 可以直接忽略。
-
-**解决**：诱饵用看起来像真 bug 的代码（如 `float eps = 0.01f;`），但放在不影响功能的位置。
-
-### 5. .git 必须删除
-
-**问题**：agent 用 `git show <commit>` 直接看到所有改动。
+**问题**：agent 用 `git show` 直接看到所有改动。
 
 **解决**：Dockerfile 最后加 `rm -rf /build/pytorch/.git`。
 
-### 6. 多层归一化增加定位难度
+### 5. Docker 会用缓存
 
-**问题**：模型只有 LayerNorm，agent 通过梯度对比直接定位到目标。
+**问题**：修改 inject_bug.py 后，`docker build` 用缓存，不重新注入 bug。
 
-**解决**：模型同时使用 BatchNorm + GroupNorm + LayerNorm，梯度检查显示多个层都有差异。
-
-### 7. test.sh 必须测试多种场景
-
-**问题**：单一测试场景（如只测 accuracy）无法覆盖所有 bug。
-
-**解决**：测试多种场景（小 batch accuracy + 大 batch 无 NaN），每个场景覆盖不同的 bug。
-
-### 8. Bug 触发条件必须不同
-
-**问题**：如果所有 bug 都在同一条件下触发，agent 修一个就全修了。
-
-**解决**：每个 bug 的触发条件不同（所有数据 / 方差小 / blockIdx 大），agent 必须分别修复。
-
-## 文件结构
-
-```
-task/
-├── task.toml              ← 任务元数据
-├── instruction.md         ← 发给 agent 的 prompt（不暴露 bug 细节）
-├── environment/
-│   ├── Dockerfile         ← 构建 task1 镜像
-│   └── Dockerfile.base    ← fat base 镜像定义
-├── workspace/
-│   ├── train.py           ← 训练脚本（支持 --eval_fixed_data）
-│   └── model.py           ← 模型定义（FeatureNorm 封装 LayerNorm）
-├── solution/
-│   ├── inject_bug.py      ← 注入 3 个真 bug + 20 个诱饵
-│   └── solve.sh           ← Oracle（修复 3 个 bug）
-└── tests/
-    └── test.sh            ← 判题脚本（多场景测试）
-```
+**解决**：用 `docker build --no-cache` 强制重建。

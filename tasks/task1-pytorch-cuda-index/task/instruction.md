@@ -45,12 +45,14 @@ python train.py --steps 100 --seed 42 --device cuda --eval_fixed_data
 ## 约束条件
 
 - **只允许修改 C++/CUDA 文件**(`.cu` / `.cpp` / `.h`),不允许修改 Python 文件
+- **禁止访问外部网络**:不允许从 GitHub、PyPI 或任何外部网站下载文件、查看源码或获取参考实现。所有分析必须基于容器内的本地源码。
 - **不允许**:
   - 在训练脚本中加 NaN 检查 / 梯度裁剪 / clamp
   - 强制使用 CPU
   - 加 try/catch
   - 修改训练参数
   - 修改 model.py 或 train.py
+  - 从外部下载参考代码进行对比
 
 ## 文件说明
 

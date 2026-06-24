@@ -1,0 +1,47 @@
+# JAX fat-base 镜像:预装 JAX + 依赖，支持增量修改
+# 构建命令:
+#   DOCKER_BUILDKIT=1 docker build \
+#     --secret id=ssh_key,src=.secrets/id_rsa \
+#     -t jax-fat-base -f tasks/task4-jax-vmap-batch/task/environment/Dockerfile.base .
+
+FROM python:3.12-slim
+
+# 安装编译工具
+RUN apt-get update && apt-get install -y \
+    build-essential git curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# 安装 Node.js (for Claude/Kimi Code)
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y nodejs && \
+    rm -rf /var/lib/apt/lists/*
+RUN npm install -g @anthropic-ai/claude-code
+RUN curl -fsSL https://code.kimi.com/kimi-code/install.sh | bash
+ENV PATH="/root/.kimi-code/bin:$PATH"
+
+# 安装 Python 依赖
+RUN pip install --no-cache-dir \
+    jax jaxlib \
+    numpy scipy \
+    pytest
+
+# 配置 SSH
+RUN mkdir -p /root/.ssh && \
+    ssh-keyscan github.com >> /root/.ssh/known_hosts 2>/dev/null && \
+    git config --global url."git@github.com:".insteadOf "https://github.com/"
+
+# 安装 JAX 从源码(保留源码支持修改)
+RUN --mount=type=secret,id=ssh_key,target=/root/.ssh/id_rsa \
+    cd / && git clone --depth 1 git@github.com:google/jax.git /build/jax
+RUN cd /build/jax && pip install -e .
+
+# 删除 SSH key
+RUN rm -rf /root/.ssh
+
+# 清理
+RUN rm -rf /var/lib/apt/lists/* /tmp/*
+
+# 设置工作目录
+WORKDIR /workspace
+
+CMD ["/bin/bash"]

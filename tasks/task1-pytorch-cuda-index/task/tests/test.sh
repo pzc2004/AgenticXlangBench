@@ -1,18 +1,4 @@
 #!/bin/bash
-# tests/test.sh — Task 1 判题脚本
-#
-# 评分标准(满分 1.0):
-#   0.10  PyTorch 可导入
-#   0.05  CUDA 可用
-#   0.30  小 batch 训练 accuracy 检查(Bug 1+2)
-#   0.20  大 batch 训练无 NaN 检查(Bug 3)
-#   0.15  多 batch_size 训练检查
-#   0.10  GPU 比 CPU 快 1.5x+
-#   0.10  Anti-hack: 无 NaN 掩盖 + 无 CPU 回退 + 关键文件未被修改
-#
-# 如果检测到 hack,总分减半。
-# 不暴露任何 bug 细节。
-
 WORKSPACE="/workspace"
 REWARD_FILE="/logs/verifier/reward.txt"
 mkdir -p "$(dirname "$REWARD_FILE")"
@@ -24,9 +10,8 @@ echo "========================================="
 echo " Task 1 评测"
 echo "========================================="
 
-# === 1. 基础:PyTorch 可导入(0.10) ===
 echo ""
-echo ">>> [1/6] PyTorch 检查..."
+echo ">>> [1/7] 环境检查..."
 if python -c "import torch; print(f'PyTorch {torch.__version__}')" 2>/dev/null; then
     score=0.10
     echo "  ✅ PyTorch 可导入"
@@ -36,9 +21,7 @@ else
     exit 0
 fi
 
-# === 2. 基础:GPU 可用(0.05) ===
 echo ""
-echo ">>> [2/6] GPU 检查..."
 if python -c "import torch; assert torch.cuda.is_available()" 2>/dev/null; then
     score=0.15
     echo "  ✅ CUDA 可用"
@@ -48,135 +31,210 @@ else
     exit 0
 fi
 
-# === 3. 小 batch 训练 accuracy 检查(0.30) ===
 echo ""
-echo ">>> [3/6] 小 batch 训练测试(Bug 1+2)..."
-SMALL_PASS=0
-SMALL_FAIL=0
+echo ">>> [2/7] 前向检查 A..."
+FWD_PASS=0
 for seed in 1 2 3 4 5; do
-    result=$(python "$WORKSPACE/train.py" --steps 50 --seed $seed --batch_size 16 --device cuda --eval_fixed_data 2>&1)
-    if echo "$result" | grep -q "nan_detected True"; then
-        echo "  ⚠️ seed=$seed: NaN detected"
-        SMALL_FAIL=$((SMALL_FAIL + 1))
-        continue
-    fi
-    acc_line=$(echo "$result" | grep "^accuracy " | tail -1)
-    correct=$(echo "$acc_line" | awk '{print $2}')
-    total=$(echo "$acc_line" | awk '{print $3}')
-    if [ -n "$total" ] && [ "$total" -gt 0 ]; then
-        pct=$(python -c "print(f'{$correct/$total*100:.1f}')" 2>/dev/null || echo "0")
-        ok=$(python -c "print(1 if $correct/$total >= 0.30 else 0)" 2>/dev/null || echo "0")
-        if [ "$ok" = "1" ]; then
-            echo "  ✅ seed=$seed: accuracy ${pct}%"
-            SMALL_PASS=$((SMALL_PASS + 1))
-        else
-            echo "  ❌ seed=$seed: accuracy ${pct}% (< 30%)"
-            SMALL_FAIL=$((SMALL_FAIL + 1))
-        fi
+    result=$(python -c "
+import torch, torch.nn as nn, sys
+sys.path.insert(0, '$WORKSPACE')
+from model import ImageClassifier
+torch.manual_seed($seed)
+if torch.cuda.is_available(): torch.cuda.manual_seed($seed)
+model_cpu = ImageClassifier().eval()
+model_cuda = ImageClassifier().cuda().eval()
+for (n1, p1), (n2, p2) in zip(model_cpu.named_parameters(), model_cuda.named_parameters()):
+    p2.data.copy_(p1.data)
+torch.manual_seed(12345)
+x = torch.randn(8, 3, 32, 32)
+out_cpu = model_cpu(x)
+out_cuda = model_cuda(x.cuda())
+abs_diff = (out_cpu - out_cuda.cpu()).abs().max().item()
+max_val = max(out_cpu.abs().max().item(), out_cuda.abs().cpu().max().item(), 1e-8)
+rel_diff = abs_diff / max_val
+print(f'rel_diff={rel_diff:.6f}')
+if rel_diff < 0.001: print('PASS')
+else: print('FAIL')
+" 2>&1)
+    if echo "$result" | grep -q "PASS"; then
+        rel=$(echo "$result" | grep "rel_diff" | sed 's/.*rel_diff=\([^ ]*\).*/\1/')
+        echo "  ✅ seed=$seed: rel_diff=$rel"
+        FWD_PASS=$((FWD_PASS + 1))
     else
-        echo "  ❌ seed=$seed: 无法解析 accuracy"
-        SMALL_FAIL=$((SMALL_FAIL + 1))
+        rel=$(echo "$result" | grep "rel_diff" | sed 's/.*rel_diff=\([^ ]*\).*/\1/')
+        echo "  ❌ seed=$seed: rel_diff=$rel"
     fi
 done
 
-if [ $SMALL_PASS -eq 5 ]; then
-    score=0.45
-    echo "  ✅ 5 个 seed 全部通过"
-elif [ $SMALL_PASS -ge 3 ]; then
-    score=0.35
-    echo "  ⚠️ $SMALL_PASS/5 个 seed 通过"
+if [ $FWD_PASS -eq 5 ]; then
+    score=$(python -c "print(f'{$score + 0.20:.2f}')")
+    echo "  ✅ 全部通过"
+elif [ $FWD_PASS -ge 3 ]; then
+    score=$(python -c "print(f'{$score + 0.10:.2f}')")
+    echo "  ⚠️ $FWD_PASS/5 通过"
 else
-    echo "  ❌ $SMALL_PASS/5 个 seed 通过"
+    echo "  ❌ $FWD_PASS/5 通过"
     echo "$score" > "$REWARD_FILE"
     exit 0
 fi
 
-# === 4. 大 batch 训练无 NaN 检查(0.20) ===
 echo ""
-echo ">>> [4/6] 大 batch 训练测试(Bug 3)..."
-LARGE_PASS=0
-LARGE_FAIL=0
-for bs in 64 128; do
-    result=$(python "$WORKSPACE/train.py" --steps 30 --seed 42 --batch_size $bs --device cuda --eval_fixed_data 2>&1)
-    if echo "$result" | grep -q "nan_detected True"; then
-        echo "  ❌ batch_size=$bs: NaN detected"
-        LARGE_FAIL=$((LARGE_FAIL + 1))
+echo ">>> [3/7] 前向检查 B..."
+RACE_PASS=0
+for seed in 1 2 3; do
+    result=$(python -c "
+import torch, torch.nn as nn, sys
+sys.path.insert(0, '$WORKSPACE')
+from model import ImageClassifier
+torch.manual_seed($seed)
+if torch.cuda.is_available(): torch.cuda.manual_seed($seed)
+model = ImageClassifier().cuda().eval()
+torch.manual_seed(12345)
+x = torch.randn(128, 3, 32, 32).cuda()
+results = []
+for _ in range(50):
+    out = model(x)
+    results.append(out.detach().clone())
+max_diff = 0
+for i in range(1, 50):
+    diff = (results[0] - results[i]).abs().max().item()
+    max_diff = max(max_diff, diff)
+print(f'max_diff={max_diff:.8f}')
+if max_diff < 1e-7: print('PASS')
+else: print('FAIL')
+" 2>&1)
+    if echo "$result" | grep -q "PASS"; then
+        diff=$(echo "$result" | grep "max_diff" | sed 's/.*max_diff=\([^ ]*\).*/\1/')
+        echo "  ✅ seed=$seed: max_diff=$diff"
+        RACE_PASS=$((RACE_PASS + 1))
     else
-        acc_line=$(echo "$result" | grep "^accuracy " | tail -1)
-        correct=$(echo "$acc_line" | awk '{print $2}')
-        total=$(echo "$acc_line" | awk '{print $3}')
-        if [ -n "$total" ] && [ "$total" -gt 0 ]; then
-            pct=$(python -c "print(f'{$correct/$total*100:.1f}')" 2>/dev/null || echo "0")
-            ok=$(python -c "print(1 if $correct/$total >= 0.30 else 0)" 2>/dev/null || echo "0")
-            if [ "$ok" = "1" ]; then
-                echo "  ✅ batch_size=$bs: accuracy ${pct}%"
-                LARGE_PASS=$((LARGE_PASS + 1))
-            else
-                echo "  ❌ batch_size=$bs: accuracy ${pct}% (< 30%)"
-                LARGE_FAIL=$((LARGE_FAIL + 1))
-            fi
-        else
-            echo "  ❌ batch_size=$bs: 无法解析 accuracy"
-            LARGE_FAIL=$((LARGE_FAIL + 1))
-        fi
+        diff=$(echo "$result" | grep "max_diff" | sed 's/.*max_diff=\([^ ]*\).*/\1/')
+        echo "  ❌ seed=$seed: max_diff=$diff"
     fi
 done
 
-if [ $LARGE_FAIL -eq 0 ]; then
-    score=0.65
-    echo "  ✅ 大 batch 测试全部通过"
+if [ $RACE_PASS -eq 3 ]; then
+    score=$(python -c "print(f'{$score + 0.05:.2f}')")
+    echo "  ✅ 全部通过"
+elif [ $RACE_PASS -ge 2 ]; then
+    score=$(python -c "print(f'{$score + 0.03:.2f}')")
+    echo "  ⚠️ $RACE_PASS/3 通过"
 else
-    echo "  ⚠️ $LARGE_FAIL/2 个大 batch 测试失败"
+    echo "  ❌ $RACE_PASS/3 通过"
 fi
 
-# === 5. 多 batch_size 测试(0.15) ===
 echo ""
-echo ">>> [5/6] 多 batch_size 测试..."
-BATCH_PASS=0
-BATCH_FAIL=0
-for bs in 16 32 64 128; do
-    result=$(python "$WORKSPACE/train.py" --steps 30 --seed 42 --batch_size $bs --device cuda --eval_fixed_data 2>&1)
-    if echo "$result" | grep -q "nan_detected True"; then
-        echo "  ❌ batch_size=$bs: NaN detected"
-        BATCH_FAIL=$((BATCH_FAIL + 1))
-        continue
-    fi
-    acc_line=$(echo "$result" | grep "^accuracy " | tail -1)
-    correct=$(echo "$acc_line" | awk '{print $2}')
-    total=$(echo "$acc_line" | awk '{print $3}')
-    if [ -n "$total" ] && [ "$total" -gt 0 ]; then
-        pct=$(python -c "print(f'{$correct/$total*100:.1f}')" 2>/dev/null || echo "0")
-        ok=$(python -c "print(1 if $correct/$total >= 0.30 else 0)" 2>/dev/null || echo "0")
-        if [ "$ok" = "1" ]; then
-            echo "  ✅ batch_size=$bs: accuracy ${pct}%"
-            BATCH_PASS=$((BATCH_PASS + 1))
-        else
-            echo "  ❌ batch_size=$bs: accuracy ${pct}% (< 30%)"
-            BATCH_FAIL=$((BATCH_FAIL + 1))
-        fi
+echo ">>> [4/7] 反向检查 A..."
+RACE_BWD_PASS=0
+for seed in 1 2 3; do
+    result=$(python -c "
+import torch, torch.nn as nn, sys
+sys.path.insert(0, '$WORKSPACE')
+from model import ImageClassifier
+torch.manual_seed($seed)
+if torch.cuda.is_available(): torch.cuda.manual_seed($seed)
+model = ImageClassifier().cuda().eval()
+torch.manual_seed(12345)
+x = torch.randn(128, 3, 32, 32).cuda()
+y = torch.randint(0, 10, (128,)).cuda()
+grads = []
+for _ in range(20):
+    model.zero_grad()
+    out = model(x)
+    loss = nn.CrossEntropyLoss()(out, y)
+    loss.backward()
+    g = next(model.parameters()).grad.detach().clone()
+    grads.append(g)
+max_diff = 0
+for i in range(1, 20):
+    diff = (grads[0] - grads[i]).abs().max().item()
+    max_diff = max(max_diff, diff)
+print(f'max_diff={max_diff:.8f}')
+if max_diff < 1e-7: print('PASS')
+else: print('FAIL')
+" 2>&1)
+    if echo "$result" | grep -q "PASS"; then
+        diff=$(echo "$result" | grep "max_diff" | sed 's/.*max_diff=\([^ ]*\).*/\1/')
+        echo "  ✅ seed=$seed: max_diff=$diff"
+        RACE_BWD_PASS=$((RACE_BWD_PASS + 1))
     else
-        echo "  ❌ batch_size=$bs: 无法解析 accuracy"
-        BATCH_FAIL=$((BATCH_FAIL + 1))
+        diff=$(echo "$result" | grep "max_diff" | sed 's/.*max_diff=\([^ ]*\).*/\1/')
+        echo "  ❌ seed=$seed: max_diff=$diff"
     fi
 done
 
-if [ $BATCH_FAIL -eq 0 ]; then
-    score=0.80
-    echo "  ✅ 4 种 batch_size 全部通过"
+if [ $RACE_BWD_PASS -eq 3 ]; then
+    score=$(python -c "print(f'{$score + 0.05:.2f}')")
+    echo "  ✅ 全部通过"
+elif [ $RACE_BWD_PASS -ge 2 ]; then
+    score=$(python -c "print(f'{$score + 0.03:.2f}')")
+    echo "  ⚠️ $RACE_BWD_PASS/3 通过"
 else
-    echo "  ⚠️ $BATCH_FAIL/4 种 batch_size 失败"
+    echo "  ❌ $RACE_BWD_PASS/3 通过"
 fi
 
-# === 6. 性能 + Anti-hack(0.20) ===
 echo ""
-echo ">>> [6/6] 性能 + Anti-hack 检查..."
+echo ">>> [5/7] 梯度检查..."
+GRAD_PASS=0
+for seed in 1 2 3 4 5; do
+    result=$(python -c "
+import torch, torch.nn as nn, sys
+sys.path.insert(0, '$WORKSPACE')
+from model import ImageClassifier
+torch.manual_seed($seed)
+if torch.cuda.is_available(): torch.cuda.manual_seed($seed)
+model_cpu = ImageClassifier().eval()
+model_cuda = ImageClassifier().cuda().eval()
+for (n1, p1), (n2, p2) in zip(model_cpu.named_parameters(), model_cuda.named_parameters()):
+    p2.data.copy_(p1.data)
+torch.manual_seed(12345)
+x = torch.randn(8, 3, 32, 32)
+y = torch.randint(0, 10, (8,))
+x_cpu = x.clone().requires_grad_(True)
+x_cuda = x.clone().cuda().requires_grad_(True)
+out_cpu = model_cpu(x_cpu)
+out_cuda = model_cuda(x_cuda)
+loss_cpu = nn.CrossEntropyLoss()(out_cpu, y)
+loss_cuda = nn.CrossEntropyLoss()(out_cuda, y.cuda())
+loss_cpu.backward()
+loss_cuda.backward()
+abs_diff = (x_cpu.grad - x_cuda.grad.cpu()).abs().max().item()
+max_val = max(x_cpu.grad.abs().max().item(), x_cuda.grad.cpu().abs().max().item(), 1e-8)
+rel_diff = abs_diff / max_val
+print(f'rel_diff={rel_diff:.6f}')
+if rel_diff < 0.001: print('PASS')
+else: print('FAIL')
+" 2>&1)
+    if echo "$result" | grep -q "PASS"; then
+        rel=$(echo "$result" | grep "rel_diff" | sed 's/.*rel_diff=\([^ ]*\).*/\1/')
+        echo "  ✅ seed=$seed: rel_diff=$rel"
+        GRAD_PASS=$((GRAD_PASS + 1))
+    else
+        rel=$(echo "$result" | grep "rel_diff" | sed 's/.*rel_diff=\([^ ]*\).*/\1/')
+        echo "  ❌ seed=$seed: rel_diff=$rel"
+    fi
+done
 
+if [ $GRAD_PASS -eq 5 ]; then
+    score=$(python -c "print(f'{$score + 0.20:.2f}')")
+    echo "  ✅ 全部通过"
+elif [ $GRAD_PASS -ge 3 ]; then
+    score=$(python -c "print(f'{$score + 0.10:.2f}')")
+    echo "  ⚠️ $GRAD_PASS/5 通过"
+else
+    echo "  ❌ $GRAD_PASS/5 通过"
+    echo "$score" > "$REWARD_FILE"
+    exit 0
+fi
+
+echo ""
+echo ">>> [6/7] 性能检查..."
 GPU_TIME=$(python "$WORKSPACE/train.py" --steps 10 --seed 42 --device cuda --profile 2>&1 | grep "avg_step_time" | awk '{print $NF}')
 CPU_TIME=$(python "$WORKSPACE/train.py" --steps 10 --seed 42 --device cpu --profile 2>&1 | grep "avg_step_time" | awk '{print $NF}')
-
 if [ -n "$GPU_TIME" ] && [ -n "$CPU_TIME" ]; then
     SPEEDUP=$(python -c "print(f'{$CPU_TIME / $GPU_TIME:.1f}')" 2>/dev/null || echo "0")
     if python -c "exit(0 if $SPEEDUP > 1.5 else 1)" 2>/dev/null; then
+        score=$(python -c "print(f'{$score + 0.10:.2f}')")
         echo "  ✅ GPU 比 CPU 快 ${SPEEDUP}x"
     else
         echo "  ⚠️ GPU 加速不足(${SPEEDUP}x)"
@@ -186,48 +244,42 @@ else
     echo "  ⚠️ 性能测试无法运行"
 fi
 
+echo ""
+echo ">>> [7/7] 完整性检查..."
 if grep -rn "nan_to_num\|clip_grad\|torch.where.*nan\|replace.*nan\|torch.clamp" "$WORKSPACE/train.py" 2>/dev/null; then
-    echo "  ❌ 发现 NaN 掩盖 / 梯度操控 hack"
+    echo "  ❌ 发现异常处理"
     HACK=1
 else
-    echo "  ✅ 未发现 NaN 掩盖"
+    echo "  ✅ 未发现异常处理"
 fi
-
 if grep -rn "device.*=.*'cpu'\|\.cpu()" "$WORKSPACE/train.py" 2>/dev/null; then
-    echo "  ❌ 发现 CPU 回退"
+    echo "  ❌ 发现设备回退"
     HACK=1
 else
-    echo "  ✅ 未发现 CPU 回退"
+    echo "  ✅ 未发现设备回退"
 fi
-
 if grep -q "ImageClassifier" "$WORKSPACE/train.py" 2>/dev/null; then
-    echo "  ✅ train.py 未被修改"
+    echo "  ✅ train.py 完整"
 else
     echo "  ❌ train.py 被修改"
     HACK=1
 fi
-
 if grep -q "FeatureNorm\|F.layer_norm" "$WORKSPACE/model.py" 2>/dev/null && \
    grep -q "BatchNorm2d\|GroupNorm" "$WORKSPACE/model.py" 2>/dev/null; then
-    echo "  ✅ model.py 未被修改"
+    score=$(python -c "print(f'{$score + 0.25:.2f}')")
+    echo "  ✅ model.py 完整"
 else
     echo "  ❌ model.py 被修改"
     HACK=1
 fi
 
-if [ $HACK -eq 0 ]; then
-    score=1.0
-fi
-
-# === 最终评分 ===
 echo ""
 echo "========================================="
-if [ $HACK -eq 0 ]; then
-    echo " 最终分数: $score"
-else
+if [ $HACK -eq 1 ]; then
     score=$(python -c "print(f'{$score * 0.5:.2f}')")
-    echo " 最终分数: $score (检测到 hack,减半)"
+    echo " 最终分数: $score (异常)"
+else
+    echo " 最终分数: $score"
 fi
 echo "========================================="
-
 echo "$score" > "$REWARD_FILE"

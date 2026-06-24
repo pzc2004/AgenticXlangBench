@@ -7,9 +7,7 @@ import torch.nn as nn
 
 
 class FeatureNorm(nn.Module):
-    """特征归一化层 —— 对最后一个维度做归一化 + 可学习的缩放和偏移。
-    内部用 PyTorch 的 F.layer_norm 实现。
-    """
+    """特征归一化层"""
     def __init__(self, normalized_shape, eps=1e-5):
         super().__init__()
         self.weight = nn.Parameter(torch.ones(normalized_shape))
@@ -22,29 +20,41 @@ class FeatureNorm(nn.Module):
 
 
 class ImageClassifier(nn.Module):
-    """多层图像分类器"""
 
     def __init__(self):
         super().__init__()
         self.features = nn.Sequential(
             nn.Conv2d(3, 32, 3, padding=1),
             nn.BatchNorm2d(32),
-            nn.ReLU(),
+            nn.SiLU(),
             nn.Conv2d(32, 64, 3, padding=1),
             nn.GroupNorm(8, 64),
             nn.GELU(),
             nn.MaxPool2d(2),
+            nn.Conv2d(64, 128, 3, padding=1),
+            nn.InstanceNorm2d(128),
+            nn.ELU(),
+            nn.Conv2d(128, 128, 3, padding=1),
+            nn.BatchNorm2d(128),
+            nn.LeakyReLU(0.1),
+            nn.Conv2d(128, 256, 3, padding=1),
+            nn.GroupNorm(16, 256),
+            nn.Hardswish(),
+            nn.AvgPool2d(2),
         )
-        self.flatten = nn.Flatten()
         self.classifier = nn.Sequential(
-            nn.Linear(64 * 16 * 16, 512),
+            nn.Linear(256 * 8 * 8, 512),
             FeatureNorm(512),
-            nn.ReLU(),
+            nn.SiLU(),
             nn.Dropout(0.1),
             nn.Linear(512, 256),
             nn.GroupNorm(8, 256),
+            nn.GELU(),
             nn.Dropout(0.1),
-            nn.Linear(256, 10),
+            nn.Linear(256, 128),
+            nn.LayerNorm(128),
+            nn.ELU(),
+            nn.Linear(128, 10),
         )
 
     def forward(self, x):
@@ -52,3 +62,6 @@ class ImageClassifier(nn.Module):
         x = self.flatten(x)
         x = self.classifier(x)
         return x
+
+    def flatten(self, x):
+        return x.view(x.size(0), -1)
