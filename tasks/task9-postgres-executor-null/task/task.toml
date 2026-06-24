@@ -1,17 +1,18 @@
-# TODO: 任务元数据
 version = "1.0"
 
 [metadata]
-author = ""
+author = "agentic-xlang-bench"
 difficulty = "hard"
 category = "cross-lang-bugfix"
-tags = []
+tags = ["sql", "c", "executor", "null-handling", "postgresql"]
 
 [environment]
-# TODO: 资源需求
+gpu = false
+disk_gb = 2
+ram_gb = 4
 
 [verifier]
 timeout = 300
 
 [agent]
-timeout = 3600
+timeout = 7200

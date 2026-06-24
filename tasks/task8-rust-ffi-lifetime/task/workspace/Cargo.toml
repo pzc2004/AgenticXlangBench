@@ -1,0 +1,12 @@
+[package]
+name = "rustops"
+version = "0.1.0"
+edition = "2021"
+description = "High-performance Rust data processing extension for Python"
+
+[lib]
+name = "rustops"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.23", features = ["extension-module"] }

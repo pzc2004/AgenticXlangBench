@@ -1,0 +1,29 @@
+# SQLite base 镜像
+# 构建命令:
+#   DOCKER_BUILDKIT=1 docker build \
+#     -t sqlite-base -f tasks/task15-sqlite-optimizer/task/environment/Dockerfile.base .
+
+FROM python:3.11-slim
+
+# 安装编译依赖
+RUN apt-get update && apt-get install -y \
+    build-essential tcl-dev wget \
+    && rm -rf /var/lib/apt/lists/*
+
+# 下载 SQLite 源码
+RUN wget https://www.sqlite.org/2024/sqlite-autoconf-3450000.tar.gz -O /tmp/sqlite.tar.gz && \
+    mkdir -p /build && \
+    tar xzf /tmp/sqlite.tar.gz -C /build && \
+    mv /build/sqlite-autoconf-3450000 /build/sqlite && \
+    rm /tmp/sqlite.tar.gz
+
+# 编译 SQLite
+RUN cd /build/sqlite && \
+    ./configure && \
+    make -j$(nproc) 2>&1 | tail -5 && \
+    make install 2>&1 | tail -3
+
+# 验证
+RUN python -c "import sqlite3; print(f'SQLite {sqlite3.sqlite_version}')"
+
+CMD ["/bin/bash"]

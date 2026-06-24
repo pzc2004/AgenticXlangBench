@@ -1,14 +1,15 @@
-# TODO: 任务元数据
 version = "1.0"
 
 [metadata]
-author = ""
+author = "exploitbench"
 difficulty = "hard"
 category = "cross-lang-bugfix"
-tags = []
+tags = ["cpython", "c-extension", "refcount", "segfault", "use-after-free"]
 
 [environment]
-# TODO: 资源需求
+# No GPU required; CPU-only build
+# Build time: ~30 seconds (small C extension)
+# Runtime: <120 seconds for full test suite (stochastic, may need retries)
 
 [verifier]
 timeout = 300

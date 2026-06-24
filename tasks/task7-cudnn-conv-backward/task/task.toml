@@ -1,17 +1,20 @@
-# TODO: 任务元数据
 version = "1.0"
 
 [metadata]
-author = ""
+author = "AgenticXlangBench"
 difficulty = "hard"
 category = "cross-lang-bugfix"
-tags = []
+tags = ["cuda", "convolution", "gradient", "training", "delayed-manifestation"]
 
 [environment]
-# TODO: 资源需求
+gpu = true
+gpu_count = 1
+gpu_memory = "8GB"
+disk = "10GB"
+build_time = "10min"
 
 [verifier]
-timeout = 300
+timeout = 600
 
 [agent]
 timeout = 3600

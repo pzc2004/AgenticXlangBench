@@ -1,17 +1,21 @@
-# TODO: 任务元数据
 version = "1.0"
 
 [metadata]
-author = ""
+author = "pzc2004"
 difficulty = "hard"
 category = "cross-lang-bugfix"
-tags = []
+tags = ["cuda", "opencv", "resize", "interpolation", "bilinear", "image-processing", "multi-bug"]
 
 [environment]
-# TODO: 资源需求
+gpu = true
+gpu_memory_min = "4GB"
+disk_min = "5GB"
+ram_min = "8GB"
 
 [verifier]
-timeout = 300
+timeout = 600
+test_script = "tests/test.sh"
 
 [agent]
 timeout = 3600
+max_turns = 200

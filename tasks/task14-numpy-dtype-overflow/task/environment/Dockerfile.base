@@ -1,0 +1,27 @@
+# NumPy base 镜像
+# 构建命令:
+#   DOCKER_BUILDKIT=1 docker build \
+#     --secret id=ssh_key,src=.secrets/id_rsa \
+#     -t numpy-base -f tasks/task14-numpy-dtype-overflow/task/environment/Dockerfile.base .
+
+FROM python:3.11-slim
+
+# 安装编译依赖
+RUN apt-get update && apt-get install -y \
+    build-essential gfortran git curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# 安装 NumPy
+RUN pip install --no-cache-dir numpy
+
+# 克隆 NumPy 源码(用于注入 bug)
+RUN --mount=type=secret,id=ssh_key \
+    git config --global user.email "build@local" && \
+    git config --global user.name "build" && \
+    GIT_SSH_COMMAND="ssh -i /run/secrets/ssh_key -o StrictHostKeyChecking=no" \
+    git clone --depth 1 git@github.com:numpy/numpy.git /build/numpy
+
+# 验证
+RUN python -c "import numpy; print(f'NumPy {numpy.__version__}')"
+
+CMD ["/bin/bash"]

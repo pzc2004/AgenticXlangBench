@@ -1,14 +1,15 @@
-# TODO: 任务元数据
 version = "1.0"
 
 [metadata]
-author = ""
+author = "exploitbench"
 difficulty = "hard"
 category = "cross-lang-bugfix"
-tags = []
+tags = ["shape-inference", "c-extension", "numpy", "tensor-ops"]
 
 [environment]
-# TODO: 资源需求
+# No GPU required; CPU-only build
+# Build time: ~30 seconds (small C extension)
+# Runtime: <60 seconds for full test suite
 
 [verifier]
 timeout = 300

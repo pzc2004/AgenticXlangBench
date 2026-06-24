@@ -1,17 +1,18 @@
-# TODO: 任务元数据
 version = "1.0"
 
 [metadata]
-author = ""
+author = "agentic-xlang-bench"
 difficulty = "hard"
 category = "cross-lang-bugfix"
-tags = []
+tags = ["python", "c", "gil", "race-condition", "threading"]
 
 [environment]
-# TODO: 资源需求
+gpu = false
+disk_gb = 1
+ram_gb = 2
 
 [verifier]
 timeout = 300
 
 [agent]
-timeout = 3600
+timeout = 5400
