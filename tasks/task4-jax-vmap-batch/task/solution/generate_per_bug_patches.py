@@ -61,8 +61,14 @@ BUGS = [
      "    axes = tuple(np.where(np.less(axes, bdim), axes, np.subtract(axes, 1)))"),
 
     ("Bug 15", "jax/_src/interpreters/batching.py",
-     "    if p in fancy_primitive_batchers:",
-     "    if p not in fancy_primitive_batchers:"),
+     "  size, = {x.shape[bd] for x, bd in zip(args, dims) if bd is not None}\n"
+     "  args = [bdim_at_front(x, bd, size) for x, bd in zip(args, dims)]\n"
+     "  out = prim.bind(*args, **params)\n"
+     "  return (out, (0,) * len(out)) if prim.multiple_results else (out, 0)",
+     "  size, = {x.shape[bd] for x, bd in zip(args, dims) if bd is not None}\n"
+     "  args = [bdim_at_front(x, bd, size) for x, bd in zip(args, dims)]\n"
+     "  out = prim.bind(*args, **params)\n"
+     "  return (out, (1,) * len(out)) if prim.multiple_results else (out, 1)"),
 
     ("Bug 17", "jax/_src/interpreters/batching.py",
      "    return broadcast(x, axis_data.size,",
@@ -160,16 +166,33 @@ def apply_single_bug(clean_dir, work_dir, name, rel_path, old, new):
         f.write(content)
 
 
-def generate_patch(clean_dir, work_dir, name, rel_path, old, new, output_path):
-    # Reset work dir to clean
-    shutil.copytree(clean_dir, work_dir, dirs_exist_ok=True)
-    apply_single_bug(clean_dir, work_dir, name, rel_path, old, new)
+def apply_decoys(clean_dir, decoys_dir, decoys_patch):
+    """Create a decoys state by applying decoys.patch to clean source."""
+    if os.path.exists(decoys_dir):
+        shutil.rmtree(decoys_dir)
+    shutil.copytree(clean_dir, decoys_dir)
+    result = subprocess.run(
+        ["patch", "-d", decoys_dir, "-p0", "-f", "--no-backup-if-mismatch"],
+        stdin=open(decoys_patch, "rb"),
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"decoys.patch failed: {result.stderr.decode(errors='replace')}"
+        )
+    print("  ✅ decoys state prepared")
 
-    # Generate unified diff for the changed file only
-    clean_file = os.path.join(clean_dir, rel_path)
+
+def generate_patch(decoys_dir, work_dir, name, rel_path, old, new, output_path):
+    # Reset work dir to decoys state
+    shutil.copytree(decoys_dir, work_dir, dirs_exist_ok=True)
+    apply_single_bug(decoys_dir, work_dir, name, rel_path, old, new)
+
+    # Generate unified diff for the changed file only (decoys -> decoys+bug)
+    decoys_file = os.path.join(decoys_dir, rel_path)
     buggy_file = os.path.join(work_dir, rel_path)
     diff = subprocess.run(
-        ["diff", "-uN", clean_file, buggy_file],
+        ["diff", "-uN", decoys_file, buggy_file],
         capture_output=True, text=True
     )
     if diff.returncode not in (0, 1):
@@ -196,19 +219,24 @@ def generate_patch(clean_dir, work_dir, name, rel_path, old, new, output_path):
 
 
 def main():
-    if len(sys.argv) != 3:
-        print(f"Usage: {sys.argv[0]} <clean_source_dir> <output_dir>")
+    if len(sys.argv) != 4:
+        print(f"Usage: {sys.argv[0]} <clean_source_dir> <decoys_patch> <output_dir>")
         sys.exit(1)
 
     clean_dir = sys.argv[1]
-    output_dir = sys.argv[2]
+    decoys_patch = sys.argv[2]
+    output_dir = sys.argv[3]
+    decoys_dir = os.path.join(output_dir, ".decoys")
     work_dir = os.path.join(output_dir, ".work")
 
     os.makedirs(output_dir, exist_ok=True)
 
+    # Prepare decoys state once
+    apply_decoys(clean_dir, decoys_dir, decoys_patch)
+
     for name, rel_path, old, new in BUGS:
         output_path = os.path.join(output_dir, f"{name.replace(' ', '_')}.patch")
-        generate_patch(clean_dir, work_dir, name, rel_path, old, new, output_path)
+        generate_patch(decoys_dir, work_dir, name, rel_path, old, new, output_path)
 
     print(f"\nGenerated {len(BUGS)} per-bug patches in {output_dir}")
 

@@ -19,12 +19,19 @@ FULL_PATCH = "/task/solution/bugs.patch"
 
 
 def run_test():
-    subprocess.run(["bash", "/task/tests/test.sh"], capture_output=True)
-    try:
-        with open(REWARD_FILE) as f:
-            return f.read().strip()
-    except Exception:
-        return "0.0"
+    # 直接运行 test_vmap.py，避免完整 test.sh 的多 seed 开销
+    result = subprocess.run(
+        ["python3", "/workspace/test_vmap.py", "--seed", "42"],
+        capture_output=True, text=True
+    )
+    for line in result.stdout.splitlines():
+        if line.startswith("accuracy "):
+            parts = line.split()
+            if len(parts) >= 3:
+                correct, total = float(parts[1]), float(parts[2])
+                if total > 0:
+                    return str(correct / total)
+    return "0.0"
 
 
 def apply_patch(patch_path, reverse=False, strip=0):

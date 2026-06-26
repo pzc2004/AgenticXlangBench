@@ -21,7 +21,7 @@ REVERSE = "--reverse" in sys.argv
 # Known bug markers used to verify patch state (relative to JAX_PKG).
 BUG_MARKERS = [
     ("_src/interpreters/batching.py", "batch_dims[0] + 1"),
-    ("_src/interpreters/batching.py", "if p not in fancy_primitive_batchers:"),
+    ("_src/interpreters/batching.py", "return (out, (1,) * len(out)) if prim.multiple_results else (out, 1)"),
     ("_src/interpreters/ad.py", "tuple(type(t) is Zero for t in out_tangents)"),
     ("_src/lax/lax.py", "result_batch_dim + 1"),
     ("_src/lax/slicing.py", "operand_bdim + 1, 0"),
