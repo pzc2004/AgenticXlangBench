@@ -1,0 +1,11 @@
+--- a/aten/src/ATen/native/cuda/layer_norm_kernel.cu
++++ b/aten/src/ATen/native/cuda/layer_norm_kernel.cu
+@@ -366,7 +366,7 @@
+         const auto dy = dY_i[l];
+         const auto gamma_val = (gamma != nullptr) ? static_cast<T_ACC>(gamma[l]) : T_ACC(1);
+ 
+-        T_ACC f_grad_input = fH * gamma_val * dy;
++        T_ACC f_grad_input = fH * gamma_val * dy * T_ACC(0.9);
+         f_grad_input -= (x - mean_val) * rstd_val * stats_x2;
+         f_grad_input -= stats_x1;
+         f_grad_input *= term1;

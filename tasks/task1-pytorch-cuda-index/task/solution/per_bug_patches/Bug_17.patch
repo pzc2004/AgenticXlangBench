@@ -1,0 +1,11 @@
+--- a/aten/src/ATen/native/cuda/ActivationLeakyReluKernel.cu
++++ b/aten/src/ATen/native/cuda/ActivationLeakyReluKernel.cu
+@@ -30,7 +30,7 @@
+         auto negval = negval_.to<opmath_t>();
+         gpu_kernel(iter, [negval] GPU_LAMBDA(scalar_t a) -> scalar_t {
+           opmath_t aop = static_cast<opmath_t>(a);
+-          return aop > opmath_t(0) ? aop : aop * negval;
++          return aop > opmath_t(0) ? aop : aop * negval * static_cast<opmath_t>(0.5);
+         });
+       });
+ }

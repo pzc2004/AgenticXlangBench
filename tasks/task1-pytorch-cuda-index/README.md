@@ -2,7 +2,7 @@
 
 ## 概述
 
-在 PyTorch 源码的多个 CUDA kernel 中注入 **25+ 真 bug + 40+ 诱饵**，涵盖多种 bug 类型：
+在 PyTorch 源码的多个 CUDA kernel 中注入 **25 真 bug + 45 诱饵**，涵盖多种 bug 类型：
 - **删除型**：删除 `__syncthreads`，导致竞争条件
 - **条件触发型**：只在特定输入下触发（方差范围、blockIdx 等）
 - **数值精度型**：微小的缩放/偏移，不崩溃但影响训练质量
@@ -27,10 +27,36 @@
 |------|------|------|
 | 删除型 | 6 | 删除 `__syncthreads`（LN/GN/BN/SoftMax） |
 | 条件触发型 | 11 | 符号翻转、均值偏移、eps 放大等 |
-| 数值精度型 | 5 | Dropout scale、Gelu x_cube、PReLU 缩放等 |
-| 跨 kernel 依赖型 | 3 | 依赖 `_ln_flag` 标志位 |
-| 陷阱诱饵 | 9 | `&& True`、`assert`，删了就出错 |
-| 普通诱饵 | 26 | 声明未使用变量、注释 |
+| 数值精度型 | 6 | Dropout scale、Gelu x_cube、PReLU 缩放、BN running_var 等 |
+| 跨 kernel 依赖型 | 2 | 依赖 `_ln_flag` 标志位 |
+| **真 bug 合计** | **25** | 见 `solution/generate_per_bug_patches.py::BUGS` |
+| `_ln_flag` 声明 | 12 | 跨 kernel bug 的 extern 符号，修复后留存为死代码 |
+| 陷阱诱饵 | 7 | `* T_ACC(1)`、`&& true`，恒等变换，删了不出错 |
+| 普通诱饵 | 26 | 声明未使用变量、可疑注释 |
+| **诱饵合计** | **45** | 见 `solution/generate_decoys.py` |
+
+## 注入方式：unified diff patch（与 task4 一致）
+
+bug 与诱饵以 patch 形式存储，注入/修复均为 `patch` 应用/回退：
+
+```
+solution/
+├── clean_src/                  ← 干净 CUDA 源码（patch 生成输入，取自 fat-base 镜像）
+├── generate_decoys.py          ← 诱饵定义 → decoys.patch
+├── generate_per_bug_patches.py ← BUGS 定义 → per_bug_patches/Bug_N.patch
+├── generate_bugs_patch.py      ← (clean+decoys) → +bugs，合成 bugs.patch
+├── decoys.patch                ← 诱饵层（build 时永久应用，solve 不回退）
+├── bugs.patch                  ← bug 层（build 应用，solve 回退）
+├── per_bug_patches/            ← 25 个单 bug patch（供审查）
+├── inject_bug.py               ← 应用/回退 bugs.patch（--reverse）
+└── solve.sh                    ← inject_bug.py --reverse + 增量编译
+```
+
+注入链路：`clean → patch decoys.patch → inject_bug.py(应用 bugs.patch) → 编译`。
+修复链路：`solve.sh → inject_bug.py --reverse → 增量编译`（诱饵保留，回退后精确等于 decoys 态）。
+
+> 注：原 inline 版 `inject_bug.py` 中 Bug 22 / Bug 25 及 5 个陷阱诱饵的锚点文本与
+> 2.5.0 源码不符、从未生效；patch 化时已校正锚点并经 build + oracle 验证全部生效。
 
 ## 实测结果
 

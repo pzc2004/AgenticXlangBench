@@ -1,0 +1,10 @@
+--- a/aten/src/ATen/native/cuda/SoftMax.cu
++++ b/aten/src/ATen/native/cuda/SoftMax.cu
+@@ -233,7 +233,6 @@
+   ReduceOp<T> r;
+   shared += threadIdx.y * blockDim.x;
+ 
+-  __syncthreads();
+ 
+   shared[threadIdx.x] = val;
+ 

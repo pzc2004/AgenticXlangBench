@@ -1,0 +1,262 @@
+diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/clean_src/aten/src/ATen/native/cuda/ActivationEluKernel.cu /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/.decoys_work/aten/src/ATen/native/cuda/ActivationEluKernel.cu
+--- aten/src/ATen/native/cuda/ActivationEluKernel.cu	2026-06-19 23:58:37.000000000 +0800
++++ aten/src/ATen/native/cuda/ActivationEluKernel.cu	2026-06-27 03:31:51.304032022 +0800
+@@ -1,3 +1,4 @@
++extern __device__ bool _ln_flag;
+ #define TORCH_ASSERT_NO_OPERATORS
+ #define _USE_MATH_DEFINES
+ 
+@@ -15,6 +16,7 @@
+ #include <ATen/cuda/ApplyGridUtils.cuh>
+ #include <ATen/cuda/detail/OffsetCalculator.cuh>
+ #include <ATen/native/cuda/Loops.cuh>
++float _var_clip = 100.0f;
+ 
+ namespace at::native {
+ namespace {
+diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/clean_src/aten/src/ATen/native/cuda/ActivationGeluKernel.cu /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/.decoys_work/aten/src/ATen/native/cuda/ActivationGeluKernel.cu
+--- aten/src/ATen/native/cuda/ActivationGeluKernel.cu	2026-06-19 23:58:37.000000000 +0800
++++ aten/src/ATen/native/cuda/ActivationGeluKernel.cu	2026-06-27 03:31:51.304032022 +0800
+@@ -1,3 +1,4 @@
++extern __device__ bool _ln_flag;
+ #define TORCH_ASSERT_NO_OPERATORS
+ #define _USE_MATH_DEFINES
+ 
+@@ -15,6 +16,7 @@
+ #include <ATen/cuda/ApplyGridUtils.cuh>
+ #include <ATen/cuda/detail/OffsetCalculator.cuh>
+ #include <ATen/native/cuda/Loops.cuh>
++int _channel_align = 32;
+ 
+ namespace at::native {
+ 
+diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/clean_src/aten/src/ATen/native/cuda/ActivationHardswishKernel.cu /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/.decoys_work/aten/src/ATen/native/cuda/ActivationHardswishKernel.cu
+--- aten/src/ATen/native/cuda/ActivationHardswishKernel.cu	2026-06-19 23:58:37.000000000 +0800
++++ aten/src/ATen/native/cuda/ActivationHardswishKernel.cu	2026-06-27 03:31:51.305032011 +0800
+@@ -1,3 +1,4 @@
++extern __device__ bool _ln_flag;
+ #define TORCH_ASSERT_NO_OPERATORS
+ #define _USE_MATH_DEFINES
+ 
+@@ -15,6 +16,7 @@
+ #include <ATen/cuda/ApplyGridUtils.cuh>
+ #include <ATen/cuda/detail/OffsetCalculator.cuh>
+ #include <ATen/native/cuda/Loops.cuh>
++float _rstd_max = 100.0f;
+ 
+ namespace at::native {
+ namespace {
+diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/clean_src/aten/src/ATen/native/cuda/ActivationHardtanhKernel.cu /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/.decoys_work/aten/src/ATen/native/cuda/ActivationHardtanhKernel.cu
+--- aten/src/ATen/native/cuda/ActivationHardtanhKernel.cu	2026-06-19 23:58:37.000000000 +0800
++++ aten/src/ATen/native/cuda/ActivationHardtanhKernel.cu	2026-06-27 03:31:51.275032357 +0800
+@@ -1,3 +1,4 @@
++extern __device__ bool _ln_flag;
+ #define TORCH_ASSERT_NO_OPERATORS
+ #define _USE_MATH_DEFINES
+ 
+diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/clean_src/aten/src/ATen/native/cuda/ActivationLeakyReluKernel.cu /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/.decoys_work/aten/src/ATen/native/cuda/ActivationLeakyReluKernel.cu
+--- aten/src/ATen/native/cuda/ActivationLeakyReluKernel.cu	2026-06-19 23:58:37.000000000 +0800
++++ aten/src/ATen/native/cuda/ActivationLeakyReluKernel.cu	2026-06-27 03:31:51.304032022 +0800
+@@ -1,3 +1,4 @@
++extern __device__ bool _ln_flag;
+ #define TORCH_ASSERT_NO_OPERATORS
+ #define _USE_MATH_DEFINES
+ 
+@@ -15,6 +16,7 @@
+ #include <ATen/cuda/ApplyGridUtils.cuh>
+ #include <ATen/cuda/detail/OffsetCalculator.cuh>
+ #include <ATen/native/cuda/Loops.cuh>
++int _bn_block = 64;
+ 
+ namespace at::native {
+ namespace {
+diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/clean_src/aten/src/ATen/native/cuda/ActivationPreluKernel.cu /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/.decoys_work/aten/src/ATen/native/cuda/ActivationPreluKernel.cu
+--- aten/src/ATen/native/cuda/ActivationPreluKernel.cu	2026-06-19 23:58:37.000000000 +0800
++++ aten/src/ATen/native/cuda/ActivationPreluKernel.cu	2026-06-27 03:31:51.305032011 +0800
+@@ -1,3 +1,4 @@
++extern __device__ bool _ln_flag;
+ #define TORCH_ASSERT_NO_OPERATORS
+ #define _USE_MATH_DEFINES
+ 
+@@ -15,6 +16,7 @@
+ #include <ATen/cuda/ApplyGridUtils.cuh>
+ #include <ATen/cuda/detail/OffsetCalculator.cuh>
+ #include <ATen/native/cuda/Loops.cuh>
++float _gamma_scale = 1.001f;
+ 
+ namespace at::native {
+ 
+diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/clean_src/aten/src/ATen/native/cuda/ActivationSiluKernel.cu /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/.decoys_work/aten/src/ATen/native/cuda/ActivationSiluKernel.cu
+--- aten/src/ATen/native/cuda/ActivationSiluKernel.cu	2026-06-19 23:58:37.000000000 +0800
++++ aten/src/ATen/native/cuda/ActivationSiluKernel.cu	2026-06-27 03:31:51.321031826 +0800
+@@ -1,3 +1,4 @@
++extern __device__ bool _ln_flag;
+ #define TORCH_ASSERT_NO_OPERATORS
+ #define _USE_MATH_DEFINES
+ 
+@@ -16,6 +17,8 @@
+ #include <ATen/cuda/detail/OffsetCalculator.cuh>
+ #include <ATen/native/cuda/Loops.cuh>
+ #include <c10/util/complex.h>
++// FIXME: overflow protection
++float _bn_eps = 1e-5f;
+ 
+ namespace at::native {
+ namespace {
+@@ -29,7 +32,7 @@
+       [&]() {
+         gpu_kernel(iter, [] GPU_LAMBDA(scalar_t x) -> scalar_t {
+           using opmath_t = at::opmath_type<scalar_t>;
+-          const opmath_t x_acc = static_cast<opmath_t>(x);
++          const opmath_t x_acc = static_cast<opmath_t>(x) * opmath_t(1);
+           return x_acc / (opmath_t(1) + ::exp(-x_acc));
+         });
+       });
+diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/clean_src/aten/src/ATen/native/cuda/Dropout.cu /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/.decoys_work/aten/src/ATen/native/cuda/Dropout.cu
+--- aten/src/ATen/native/cuda/Dropout.cu	2026-06-19 23:58:37.000000000 +0800
++++ aten/src/ATen/native/cuda/Dropout.cu	2026-06-27 03:31:51.319031849 +0800
+@@ -1,3 +1,4 @@
++extern __device__ bool _ln_flag;
+ #define TORCH_ASSERT_ONLY_METHOD_OPERATORS
+ #include <ATen/core/Tensor.h>
+ #include <ATen/AccumulateType.h>
+@@ -23,6 +24,8 @@
+ #include <ATen/ops/native_dropout_backward_native.h>
+ #include <ATen/ops/ones_like.h>
+ #include <ATen/ops/zeros_like.h>
++// BUG_CANDIDATE: mask generation
++int _norm_threads = 128;
+ #endif
+ 
+ namespace at::native {
+diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/clean_src/aten/src/ATen/native/cuda/Normalization.cu /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/.decoys_work/aten/src/ATen/native/cuda/Normalization.cu
+--- aten/src/ATen/native/cuda/Normalization.cu	2026-06-19 23:58:37.000000000 +0800
++++ aten/src/ATen/native/cuda/Normalization.cu	2026-06-27 03:31:51.312031930 +0800
+@@ -1,3 +1,4 @@
++extern __device__ bool _ln_flag;
+ #define TORCH_ASSERT_ONLY_METHOD_OPERATORS
+ #include <ATen/cuda/detail/IndexUtils.cuh>
+ #include <ATen/detail/CUDAHooksInterface.h>
+@@ -32,6 +33,10 @@
+ #include <ATen/ops/native_batch_norm_backward_native.h>
+ #include <ATen/ops/native_batch_norm_native.h>
+ #include <ATen/ops/scalar_tensor.h>
++// NOTE: variance computation fragile
++// BUG_CANDIDATE: momentum update
++int _vec_size_fallback = 4;
++float _norm_eps_adj = 1.0f;
+ #endif
+ 
+ namespace at::native {
+@@ -169,7 +174,7 @@
+       using acc_t = at::acc_type<scalar_t, true>;
+       gpu_kernel(iter, [] GPU_LAMBDA (scalar_t input, acc_t weight, acc_t bias,
+                                       acc_t mean, acc_t invstd) -> scalar_t {
+-        return (input - mean) * weight * invstd + bias;
++        return (input - mean) * weight * invstd * acc_t(1) + bias;
+       });
+     });
+     return;
+diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/clean_src/aten/src/ATen/native/cuda/SoftMax.cu /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/.decoys_work/aten/src/ATen/native/cuda/SoftMax.cu
+--- aten/src/ATen/native/cuda/SoftMax.cu	2026-06-19 23:58:37.000000000 +0800
++++ aten/src/ATen/native/cuda/SoftMax.cu	2026-06-27 03:31:51.318031861 +0800
+@@ -1,3 +1,4 @@
++extern __device__ bool _ln_flag;
+ #define TORCH_ASSERT_ONLY_METHOD_OPERATORS
+ #include <ATen/core/Tensor.h>
+ #include <ATen/cuda/CUDAContext.h>
+@@ -28,6 +29,9 @@
+ #include <ATen/ops/_softmax_backward_data_native.h>
+ #include <ATen/ops/softmax.h>
+ #include <ATen/ops/_softmax_backward_data.h>
++// TODO: numerical stability
++float _momentum_adj = 0.999f;
++float _var_floor = 1e-6f;
+ #endif
+ 
+ namespace at::native {
+diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/clean_src/aten/src/ATen/native/cuda/group_norm_kernel.cu /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/.decoys_work/aten/src/ATen/native/cuda/group_norm_kernel.cu
+--- aten/src/ATen/native/cuda/group_norm_kernel.cu	2026-06-19 23:58:37.000000000 +0800
++++ aten/src/ATen/native/cuda/group_norm_kernel.cu	2026-06-27 03:31:51.316031884 +0800
+@@ -1,3 +1,4 @@
++extern __device__ bool _ln_flag;
+ #define TORCH_ASSERT_ONLY_METHOD_OPERATORS
+ #include <ATen/native/group_norm.h>
+ 
+@@ -19,6 +20,10 @@
+ #include <ATen/Functions.h>
+ #else
+ #include <ATen/ops/empty.h>
++// WARNING: mean computation
++// FIXME: gamma scaling assumption
++int _thread_align = 32;
++float _mean_clip = 10.0f;
+ #endif
+ 
+ namespace at::native {
+@@ -84,7 +89,7 @@
+     acc_type<T, true>* b) {
+   using T_ACC = acc_type<T, true>;
+   const int64_t index = blockIdx.x * blockDim.x + threadIdx.x;
+-  if (index < N * C) {
++  if (index < N * C && true) {
+     const int64_t ng = index / (C / group);
+     const int64_t c = index % C;
+     const T_ACC scale = (gamma == nullptr)
+@@ -165,7 +170,7 @@
+       const int64_t nc = n * C + c;
+       const int64_t ng = n * G + c / D;
+       const T_ACC dy_acc = static_cast<T_ACC>(dY[nc]);
+-      const T_ACC x_acc = static_cast<T_ACC>(X[nc]);
++      const T_ACC x_acc = static_cast<T_ACC>(X[nc]) * T_ACC(1);
+       sum1 += (dgamma == nullptr)
+           ? T_ACC(0)
+           : ((dy_acc * x_acc - dy_acc * static_cast<T_ACC>(mean[ng])) *
+diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/clean_src/aten/src/ATen/native/cuda/layer_norm_kernel.cu /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/.decoys_work/aten/src/ATen/native/cuda/layer_norm_kernel.cu
+--- aten/src/ATen/native/cuda/layer_norm_kernel.cu	2026-06-19 23:58:37.000000000 +0800
++++ aten/src/ATen/native/cuda/layer_norm_kernel.cu	2026-06-27 03:31:51.309031965 +0800
+@@ -1,3 +1,4 @@
++extern __device__ bool _ln_flag;
+ #define TORCH_ASSERT_ONLY_METHOD_OPERATORS
+ #include <ATen/native/layer_norm.h>
+ 
+@@ -26,6 +27,12 @@
+ 
+ #include <c10/cuda/CUDAMathCompat.h>
+ #include <c10/util/env.h>
++// TODO: optimize memory access
++// WARNING: race condition possible
++// FIXME: eps handling might be wrong
++int _block_size_hint = 256;
++float _eps_override = 1e-5f;
++float _sigma2_floor = 1e-6f;
+ 
+ 
+ namespace at::native {
+@@ -367,7 +374,7 @@
+         const auto gamma_val = (gamma != nullptr) ? static_cast<T_ACC>(gamma[l]) : T_ACC(1);
+ 
+         T_ACC f_grad_input = fH * gamma_val * dy;
+-        f_grad_input -= (x - mean_val) * rstd_val * stats_x2;
++        f_grad_input -= (x - mean_val) * rstd_val * stats_x2 * T_ACC(1);
+         f_grad_input -= stats_x1;
+         f_grad_input *= term1;
+         dX_i[l] = f_grad_input;
+@@ -439,7 +446,7 @@
+ 
+     for (int k = 0; k < vec_size; ++k) {
+       const auto gamma_val = static_cast<T_ACC>(gamma_vec_reg.val[k]);
+-      const auto c_h = static_cast<T_ACC>(X_i_vec_reg.val[k]);
++      const auto c_h = static_cast<T_ACC>(X_i_vec_reg.val[k]) * T_ACC(1);
+       const auto c_loss = static_cast<T_ACC>(dY_i_vec_reg.val[k]);
+       stats_x1 += c_loss * gamma_val;
+       stats_x2 += c_loss * gamma_val * (c_h - mean_val) * rstd_val;
+@@ -988,7 +995,7 @@
+     const T_ACC* part_grad_gamma_ptr = part_grad_gamma + threadIdx.y * num_warp_reductions * N + i2;
+     const T_ACC* part_grad_beta_ptr = part_grad_beta + threadIdx.y * num_warp_reductions * N + i2;
+ 
+-    if (i2 < N) {
++    if (i2 < N && true) {
+         for (int warp_offset = 0;  warp_offset < num_warp_reductions;  ++warp_offset) {
+           sum_gamma += part_grad_gamma_ptr[warp_offset*N];
+           sum_beta += part_grad_beta_ptr[warp_offset*N];

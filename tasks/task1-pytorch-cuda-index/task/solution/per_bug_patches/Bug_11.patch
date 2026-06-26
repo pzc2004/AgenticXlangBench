@@ -1,0 +1,11 @@
+--- a/aten/src/ATen/native/cuda/Normalization.cu
++++ b/aten/src/ATen/native/cuda/Normalization.cu
+@@ -408,7 +408,7 @@
+         return thrust::tuple<scalar_t, scalar_t, acc_t>{
+           mean * momentum + (1 - momentum) * running_mean,
+           unbiased_var * momentum + (1 - momentum) * running_var,
+-          c10::cuda::compat::rsqrt(var + eps)
++          c10::cuda::compat::rsqrt(var + eps * static_cast<acc_t>(100))
+         };
+       });
+   });

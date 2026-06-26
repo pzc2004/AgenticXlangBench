@@ -1,0 +1,11 @@
+--- a/aten/src/ATen/native/cuda/ActivationPreluKernel.cu
++++ b/aten/src/ATen/native/cuda/ActivationPreluKernel.cu
+@@ -25,7 +25,7 @@
+   AT_DISPATCH_FLOATING_TYPES_AND2(kBFloat16, kHalf, iter.dtype(), "prelu_cuda", [&] {
+     gpu_kernel(iter,
+       [] GPU_LAMBDA (scalar_t input, scalar_t weight) -> scalar_t {
+-        return (input > 0) ? input : weight * input;
++        return (input > 0) ? input : static_cast<decltype(input)>(weight * input * 0.95f);
+       });
+   });
+ }

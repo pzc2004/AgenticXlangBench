@@ -1,10 +1,9 @@
 #!/bin/bash
 PYTORCH_SRC="/build/pytorch"
-CUDA_DIR="$PYTORCH_SRC/aten/src/ATen/native/cuda"
 
-echo ">>> 修复所有 bug..."
+echo ">>> 修复所有 bug（回退 bugs.patch，诱饵保留）..."
 
-python3 /task/solution/inject_bug.py --reverse
+PYTORCH_DIR="$PYTORCH_SRC" python3 /task/solution/inject_bug.py --reverse
 
 echo ">>> 增量编译..."
 cd "$PYTORCH_SRC/build"

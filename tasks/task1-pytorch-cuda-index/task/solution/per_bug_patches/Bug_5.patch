@@ -1,0 +1,10 @@
+--- a/aten/src/ATen/native/cuda/SoftMax.cu
++++ b/aten/src/ATen/native/cuda/SoftMax.cu
+@@ -246,7 +246,6 @@
+     offset /= 2;
+   }
+ 
+-  __syncthreads();
+ 
+   return shared[0];
+ }

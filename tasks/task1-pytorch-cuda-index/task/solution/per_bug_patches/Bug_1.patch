@@ -1,0 +1,10 @@
+--- a/aten/src/ATen/native/cuda/layer_norm_kernel.cu
++++ b/aten/src/ATen/native/cuda/layer_norm_kernel.cu
+@@ -207,7 +207,6 @@
+         meansigmabuf[0] = wd.mean;
+         meansigmabuf[1] = wd.sigma2/float(N);
+       }
+-      __syncthreads();
+       return WelfordDataLN{meansigmabuf[0], meansigmabuf[1],0.f};
+ 
+     } else {

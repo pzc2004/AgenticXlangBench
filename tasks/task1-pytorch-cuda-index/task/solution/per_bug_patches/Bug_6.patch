@@ -1,0 +1,10 @@
+--- a/aten/src/ATen/native/cuda/SoftMax.cu
++++ b/aten/src/ATen/native/cuda/SoftMax.cu
+@@ -394,7 +394,6 @@
+             AccumT defaultVal)
+ {
+   // To avoid RaW races from chaining blockReduce calls together, we need a sync here
+-  __syncthreads();
+ 
+   smem[threadIdx.x] = val;
+ 
