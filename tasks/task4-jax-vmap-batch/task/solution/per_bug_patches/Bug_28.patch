@@ -1,0 +1,11 @@
+--- a/jax/_src/lax/slicing.py
++++ b/jax/_src/lax/slicing.py
+@@ -2202,7 +2202,7 @@
+     operand = batching.moveaxis(operand, operand_bdim, 0)
+     operand_bdim = 0
+     slice_sizes = (operand.shape[0],) + slice_sizes
+-    offset_dims = (0,) + tuple(np.add(1, dimension_numbers.offset_dims))
++    offset_dims = (0,) + tuple(np.add(2, dimension_numbers.offset_dims))
+     collapsed_slice_dims = tuple(np.add(1, dimension_numbers.collapsed_slice_dims))
+     operand_batching_dims = tuple(
+         np.add(1, dimension_numbers.operand_batching_dims)

@@ -1,0 +1,11 @@
+--- a/jax/_src/interpreters/batching.py
++++ b/jax/_src/interpreters/batching.py
+@@ -261,7 +261,7 @@
+   def process_primitive(self, p, tracers, params, /):
+     vals_in, dims_in = unzip2(map(self.to_batch_info, tracers))
+     unmapped_args = all(bdim is None for bdim in dims_in)
+-    if p in fancy_primitive_batchers:
++    if p not in fancy_primitive_batchers:
+       # TODO(yashkatariya): Remove remove_explicit_mesh_axis_names when vmap
+       # mesh ctx is correctly set.
+       with (core.set_current_trace(self.parent_trace),

@@ -1,0 +1,11 @@
+--- a/jax/_src/interpreters/ad.py
++++ b/jax/_src/interpreters/ad.py
+@@ -112,7 +112,7 @@
+       out_primals, out_tangents = ans.map(linearize_trace.to_primal_tangent_pair).unzip2()
+       del linearize_trace, ans, tracers
+   nzs_out = tuple(type(t) is not Zero for t in out_tangents)
+-  out_tangents = tuple(t for t, nz in zip(out_tangents, nzs_out) if nz)
++  out_tangents = tuple(out_tangents)
+   out_tangents = map(partial(tangent_trace.to_jaxpr_tracer, source_info=source_info), out_tangents)
+   jaxpr, consts = tangent_trace.to_jaxpr(out_tangents, debug_info.with_unknown_names(), source_info)
+   which_env = [(isinstance(c, pe.DynamicJaxprTracer) and

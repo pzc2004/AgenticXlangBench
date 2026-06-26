@@ -1,0 +1,11 @@
+--- a/jax/_src/interpreters/batching.py
++++ b/jax/_src/interpreters/batching.py
+@@ -672,7 +672,7 @@
+   # NOTE: axes must be deterministic; do not remove sorting
+   axes = tuple(sorted(axes)) if axes else axes
+ 
+-  if all(d is None for d in batch_dims):
++  if False:
+     return prim.bind(*batched_args, axes=axes, **params), None
+   def out_axis(axes, axis):
+     return int(list(np.delete(np.arange(operand.ndim), axes)).index(axis))

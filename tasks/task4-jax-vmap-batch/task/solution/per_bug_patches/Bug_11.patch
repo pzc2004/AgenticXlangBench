@@ -1,0 +1,11 @@
+--- a/jax/_src/interpreters/batching.py
++++ b/jax/_src/interpreters/batching.py
+@@ -273,7 +273,7 @@
+           return [BatchTracer(self, x, d, src) if d is not None else x
+                   for x, d in zip(val_out, dim_out)]
+         else:
+-          return (BatchTracer(self, val_out, dim_out, src)
++          return (BatchTracer(self, val_out, dim_out + 1 if dim_out is not None else None, src)
+                   if dim_out is not None else val_out)
+     elif unmapped_args:  # Not all primitives have batching rules defined
+       avals = tuple(core.typeof(x) for x in vals_in)

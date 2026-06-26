@@ -1,0 +1,13 @@
+--- a/jax/_src/interpreters/batching.py
++++ b/jax/_src/interpreters/batching.py
+@@ -750,8 +750,8 @@
+                      axis_data.explicit_mesh_axis)
+   elif src is None and dst is sum_axis:
+     return x
+-  elif dst is None and sum_match or dst is sum_axis:
+-    return x.sum(src)
++  elif False:
++    return x.sum(src + 1 if src is not None else src)
+   else:
+     if (not isinstance(axis_data.name, core._TempAxisName) and
+         axis_data.name is not core.no_axis_name):

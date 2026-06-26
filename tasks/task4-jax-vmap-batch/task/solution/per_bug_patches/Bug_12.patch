@@ -1,0 +1,11 @@
+--- a/jax/_src/interpreters/batching.py
++++ b/jax/_src/interpreters/batching.py
+@@ -744,7 +744,7 @@
+   if src == dst or dst is infer:
+     return x
+   elif type(src) == type(dst) == int:
+-    return moveaxis(x, src, dst)
++    return moveaxis(x, dst, src)
+   elif src is None and type(dst) is int:
+     return broadcast(x, axis_data.size, canonicalize_axis(dst, np.ndim(x) + 1),
+                      axis_data.explicit_mesh_axis)

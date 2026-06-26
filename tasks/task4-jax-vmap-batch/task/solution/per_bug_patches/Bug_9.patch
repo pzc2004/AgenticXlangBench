@@ -1,0 +1,11 @@
+--- a/jax/_src/interpreters/batching.py
++++ b/jax/_src/interpreters/batching.py
+@@ -688,7 +688,7 @@
+       if out_s is not None:
+         params = dict(params,
+                       out_sharding=get_sharding_for_vmap(axis_data, out_s, bdim_out))
+-    return prim.bind(operand, axes=axes, **params), bdim_out
++    return prim.bind(operand, axes=axes, **params), bdim_out + 1
+   else:
+     assert False
+ 

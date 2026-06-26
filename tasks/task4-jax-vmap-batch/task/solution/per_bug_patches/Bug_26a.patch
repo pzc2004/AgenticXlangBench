@@ -1,0 +1,11 @@
+--- a/jax/_src/lax/lax.py
++++ b/jax/_src/lax/lax.py
+@@ -5846,7 +5846,7 @@
+       preferred_element_type=preferred_element_type,
+       out_sharding=out_sharding,
+   )
+-  return batched_out, result_batch_dim
++  return batched_out, result_batch_dim + 1
+ 
+ 
+ def _dot_general_batch_dim_nums(ndims, batch_dims, dimension_numbers):

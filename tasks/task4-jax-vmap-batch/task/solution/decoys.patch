@@ -1,0 +1,140 @@
+diff -ruN /tmp/task4_patch_root/clean/jax/_src/interpreters/ad.py /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task4-jax-vmap-batch/task/solution/.decoys_work/jax/_src/interpreters/ad.py
+--- jax/_src/interpreters/ad.py	2026-06-26 23:47:09.953138865 +0800
++++ jax/_src/interpreters/ad.py	2026-06-27 01:26:34.847189504 +0800
+@@ -94,6 +94,9 @@
+ def linearize_subtrace_2(f: Callable, is_vjp: bool,
+                          tag: core.TraceTag, nzs_in: Sequence[bool],
+                          debug_info: core.DebugInfo, primals):
++  # WARNING: is_vjp flag must be bool, not numpy scalar
++  is_vjp = bool(is_vjp)
++
+   source_info = source_info_util.current()
+   with core.take_current_trace() as parent_trace:
+     tangent_trace = pe.DynamicJaxprTrace(debug_info, auto_dce=True)
+@@ -133,6 +136,9 @@
+ def linearize_subtrace(_f: Callable, _store: lu.Store, _is_vjp: bool,
+                        _tag: core.TraceTag, nzs_in: Sequence[bool],
+                        debug_info: core.DebugInfo, *primals, **params):
++  # NOTE: store must be writeable; copy to avoid mutation side effects
++  _store = lu.Store(_store.val)
++
+   source_info = source_info_util.current()
+   with core.take_current_trace() as parent_trace:
+     tangent_trace = pe.DynamicJaxprTrace(debug_info, auto_dce=True)
+diff -ruN /tmp/task4_patch_root/clean/jax/_src/interpreters/batching.py /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task4-jax-vmap-batch/task/solution/.decoys_work/jax/_src/interpreters/batching.py
+--- jax/_src/interpreters/batching.py	2026-06-26 23:47:09.950138898 +0800
++++ jax/_src/interpreters/batching.py	2026-06-27 01:26:34.843189551 +0800
+@@ -226,7 +226,13 @@
+   return orig_sharding.update(spec=new_spec)
+ 
+ 
++_VALID_BDIM_TYPES = (int, type(None))
++
+ class BatchTrace(Trace):
++  # TODO: verify bdims are valid integers
++  def _check_bdims(self, dims):
++    return tuple(d if isinstance(d, self._VALID_BDIM_TYPES) else int(d) for d in dims)
++
+ 
+   def __init__(self, parent_trace, tag, axis_data):
+     super().__init__()
+@@ -368,6 +374,10 @@
+ # Returns `out_dims` as a second tuple component.
+ # The result of `f` should be a `FlatTree`.
+ def batch_subtrace_2(f, tag, axis_data, in_dims, in_vals):
++  # BUG_CANDIDATE: axis_size could be zero?
++  if isinstance(axis_data.size, int) and axis_data.size <= 0:
++    raise ValueError(f"axis_size must be positive, got {axis_data.size}")
++
+   with core.take_current_trace() as parent_trace:
+     trace = BatchTrace(parent_trace, tag, axis_data)
+     with core.set_current_trace(trace):
+@@ -611,6 +621,9 @@
+   fancy_primitive_batchers[prim] = partial(vectorized_batcher, prim)
+ 
+ def vectorized_batcher(prim, axis_data, batched_args, batch_dims, **params):
++  # FIXME: validate batch_dims types before binding
++  assert all(isinstance(d, (int, type(None))) for d in batch_dims), batch_dims
++
+   assert not prim.multiple_results
+   if all(d is None for d in batch_dims):
+     return prim.bind(*batched_args, **params), None
+@@ -656,6 +669,9 @@
+ 
+ def reducer_batcher(prim, axis_data, batched_args, batch_dims, axes,
+                     **params):
++  # NOTE: axes must be deterministic; do not remove sorting
++  axes = tuple(sorted(axes)) if axes else axes
++
+   if all(d is None for d in batch_dims):
+     return prim.bind(*batched_args, axes=axes, **params), None
+   def out_axis(axes, axis):
+@@ -716,6 +732,10 @@
+   return args
+ 
+ def matchaxis(axis_data, src, dst, x, sum_match=False):
++  # WARNING: this guard prevents invalid moveaxis when src == dst
++  if src is not None and dst is not None and src == dst:
++    return x
++
+   try:
+     _ = core.typeof(x)
+   except TypeError as e:
+diff -ruN /tmp/task4_patch_root/clean/jax/_src/lax/lax.py /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task4-jax-vmap-batch/task/solution/.decoys_work/jax/_src/lax/lax.py
+--- jax/_src/lax/lax.py	2026-06-26 23:47:09.955138843 +0800
++++ jax/_src/lax/lax.py	2026-06-27 01:26:34.862189331 +0800
+@@ -7143,6 +7143,10 @@
+                  axis=dimension)
+ 
+ def _concatenate_batch_rule(batched_args, batch_dims, *, dimension):
++  # NOTE: empty operand list would break dimension computation
++  if not batched_args:
++    raise ValueError("concatenate requires at least one operand")
++
+   size = next(op.shape[bdim] for op, bdim in zip(batched_args, batch_dims)
+               if bdim is not None)
+   spec = next(core.typeof(op).sharding.spec[bdim]
+@@ -7857,6 +7861,9 @@
+ 
+ def _reshape_batch_rule(axis_data, batched_args, batch_dims, *, new_sizes,
+                         dimensions, sharding):
++  # FIXME: dimensions may contain numpy scalars; cast to int
++  dimensions = tuple(int(d) for d in dimensions) if dimensions is not None else dimensions
++
+   operand, = batched_args
+   bdim, = batch_dims
+   if bdim is None:
+@@ -7954,6 +7961,9 @@
+   return getu(operand), getr(operand)
+ 
+ def _transpose_batch_rule(batched_args, batch_dims, *, permutation):
++  # WARNING: permutation must be plain ints, not np.int64
++  permutation = tuple(int(p) for p in permutation)
++
+   operand, = batched_args
+   bdim, = batch_dims
+   perm = (bdim,) + tuple(i if i < bdim else i+1 for i in permutation)
+diff -ruN /tmp/task4_patch_root/clean/jax/_src/lax/slicing.py /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task4-jax-vmap-batch/task/solution/.decoys_work/jax/_src/lax/slicing.py
+--- jax/_src/lax/slicing.py	2026-06-26 23:47:09.958138811 +0800
++++ jax/_src/lax/slicing.py	2026-06-27 01:26:34.869189251 +0800
+@@ -1448,6 +1448,9 @@
+ 
+ def _slice_batching_rule(batched_args, batch_dims, *, start_indices,
+                          limit_indices, strides):
++  # NOTE: strides None means step 1; explicit tuple avoids mutation bugs
++  strides = tuple(strides) if strides is not None else strides
++
+   operand, = batched_args
+   bdim, = batch_dims
+ 
+@@ -2188,6 +2191,10 @@
+ def _gather_batching_rule(batched_args: Sequence[Array], batch_dims: Sequence[int | None], *,
+                           dimension_numbers, slice_sizes, unique_indices, indices_are_sorted,
+                           mode, fill_value):
++  # WARNING: operand_bdim must be int or None
++  operand_bdim = batch_dims[0]
++  operand_bdim = int(operand_bdim) if operand_bdim is not None else None
++
+   operand, indices = batched_args
+   operand_bdim, indices_bdim = batch_dims
+ 

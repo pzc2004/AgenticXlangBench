@@ -1,0 +1,11 @@
+--- a/jax/_src/lax/lax.py
++++ b/jax/_src/lax/lax.py
+@@ -7872,7 +7872,7 @@
+     return out, None
+   operand = batching.moveaxis(operand, bdim, 0)
+   if dimensions is not None:
+-    dimensions = (0,) + tuple(np.add(1, dimensions))
++    dimensions = (0,) + tuple(np.add(2, dimensions))
+ 
+   if sharding is not None:
+     sharding = batching.get_sharding_for_vmap(axis_data, sharding, 0)

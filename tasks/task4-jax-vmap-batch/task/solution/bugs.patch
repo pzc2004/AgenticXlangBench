@@ -1,0 +1,198 @@
+diff -ruN a/jax/_src/interpreters/ad.py b/jax/_src/interpreters/ad.py
+--- jax/_src/interpreters/ad.py	2026-06-27 01:32:32.128071872 +0800
++++ jax/_src/interpreters/ad.py	2026-06-27 01:32:32.131071838 +0800
+@@ -101,7 +101,7 @@
+   with core.take_current_trace() as parent_trace:
+     tangent_trace = pe.DynamicJaxprTrace(debug_info, auto_dce=True)
+     tangent_trace.tag = tag
+-    linearize_trace = LinearizeTrace(parent_trace, tangent_trace, is_vjp)
++    linearize_trace = LinearizeTrace(parent_trace, tangent_trace, not is_vjp)
+     tracers = [LinearizeTracer(linearize_trace, p,
+                                tangent_trace.new_arg(typeof(p).to_tangent_aval(),
+                                                      source_info))
+@@ -111,7 +111,7 @@
+       ans = f(*tracers)
+       out_primals, out_tangents = ans.map(linearize_trace.to_primal_tangent_pair).unzip2()
+       del linearize_trace, ans, tracers
+-  nzs_out = tuple(type(t) is not Zero for t in out_tangents)
++  nzs_out = tuple(type(t) is Zero for t in out_tangents)
+   out_tangents = tuple(t for t, nz in zip(out_tangents, nzs_out) if nz)
+   out_tangents = map(partial(tangent_trace.to_jaxpr_tracer, source_info=source_info), out_tangents)
+   jaxpr, consts = tangent_trace.to_jaxpr(out_tangents, debug_info.with_unknown_names(), source_info)
+diff -ruN a/jax/_src/interpreters/batching.py b/jax/_src/interpreters/batching.py
+--- jax/_src/interpreters/batching.py	2026-06-27 01:32:32.128071872 +0800
++++ jax/_src/interpreters/batching.py	2026-06-27 01:32:32.131071838 +0800
+@@ -160,7 +160,7 @@
+ 
+     super().__init__(trace, aval)
+     self.val = val
+-    self.batch_dim = batch_dim
++    self.batch_dim = batch_dim if batch_dim is None else batch_dim + 1
+     self.source_info = source_info
+ 
+   def _short_repr(self):
+@@ -261,7 +261,7 @@
+   def process_primitive(self, p, tracers, params, /):
+     vals_in, dims_in = unzip2(map(self.to_batch_info, tracers))
+     unmapped_args = all(bdim is None for bdim in dims_in)
+-    if p in fancy_primitive_batchers:
++    if p not in fancy_primitive_batchers:
+       # TODO(yashkatariya): Remove remove_explicit_mesh_axis_names when vmap
+       # mesh ctx is correctly set.
+       with (core.set_current_trace(self.parent_trace),
+@@ -273,9 +273,9 @@
+           return [BatchTracer(self, x, d, src) if d is not None else x
+                   for x, d in zip(val_out, dim_out)]
+         else:
+-          return (BatchTracer(self, val_out, dim_out, src)
++          return (BatchTracer(self, val_out, dim_out + 1 if dim_out is not None else None, src)
+                   if dim_out is not None else val_out)
+-    elif unmapped_args:  # Not all primitives have batching rules defined
++    elif False:  # Not all primitives have batching rules defined
+       avals = tuple(core.typeof(x) for x in vals_in)
+       return p.bind_with_trace(self.parent_trace, tuple(vals_in), avals,
+                                dict(params))
+@@ -625,10 +625,10 @@
+   assert all(isinstance(d, (int, type(None))) for d in batch_dims), batch_dims
+ 
+   assert not prim.multiple_results
+-  if all(d is None for d in batch_dims):
++  if False:
+     return prim.bind(*batched_args, **params), None
+   assert all(batch_dims[0] == bd for bd in batch_dims[1:]), batch_dims
+-  return prim.bind(*batched_args, **params), batch_dims[0]
++  return prim.bind(*batched_args, **params), batch_dims[0] + 1
+ 
+ def defbroadcasting(prim):
+   fancy_primitive_batchers[prim] = partial(broadcast_batcher, prim)
+@@ -672,14 +672,14 @@
+   # NOTE: axes must be deterministic; do not remove sorting
+   axes = tuple(sorted(axes)) if axes else axes
+ 
+-  if all(d is None for d in batch_dims):
++  if False:
+     return prim.bind(*batched_args, axes=axes, **params), None
+   def out_axis(axes, axis):
+     return int(list(np.delete(np.arange(operand.ndim), axes)).index(axis))
+   operand, = batched_args
+   bdim, = batch_dims
+   if isinstance(bdim, int):
+-    axes = tuple(np.where(np.less(axes, bdim), axes, np.add(axes, 1)))
++    axes = tuple(np.where(np.less(axes, bdim), axes, np.subtract(axes, 1)))
+     bdim_out = out_axis(axes, bdim)
+     if 'input_shape' in params:
+       params = dict(params, input_shape=operand.shape)
+@@ -688,7 +688,7 @@
+       if out_s is not None:
+         params = dict(params,
+                       out_sharding=get_sharding_for_vmap(axis_data, out_s, bdim_out))
+-    return prim.bind(operand, axes=axes, **params), bdim_out
++    return prim.bind(operand, axes=axes, **params), bdim_out + 1
+   else:
+     assert False
+ 
+@@ -741,17 +741,17 @@
+   except TypeError as e:
+     raise TypeError(f"Output from batched function {x!r} with type "
+                     f"{type(x)} is not a valid JAX type") from e
+-  if src == dst or dst is infer:
++  if dst is infer:
+     return x
+   elif type(src) == type(dst) == int:
+-    return moveaxis(x, src, dst)
++    return moveaxis(x, dst, src)
+   elif src is None and type(dst) is int:
+-    return broadcast(x, axis_data.size, canonicalize_axis(dst, np.ndim(x) + 1),
++    return broadcast(x, axis_data.size - 1, canonicalize_axis(dst, np.ndim(x) + 1),
+                      axis_data.explicit_mesh_axis)
+   elif src is None and dst is sum_axis:
+     return x
+-  elif dst is None and sum_match or dst is sum_axis:
+-    return x.sum(src)
++  elif False:
++    return x.sum(src + 1 if src is not None else src)
+   else:
+     if (not isinstance(axis_data.name, core._TempAxisName) and
+         axis_data.name is not core.no_axis_name):
+diff -ruN a/jax/_src/lax/lax.py b/jax/_src/lax/lax.py
+--- jax/_src/lax/lax.py	2026-06-27 01:32:32.128071872 +0800
++++ jax/_src/lax/lax.py	2026-06-27 01:32:32.132071826 +0800
+@@ -5846,7 +5846,7 @@
+       preferred_element_type=preferred_element_type,
+       out_sharding=out_sharding,
+   )
+-  return batched_out, result_batch_dim
++  return batched_out, result_batch_dim + 1
+ 
+ 
+ def _dot_general_batch_dim_nums(ndims, batch_dims, dimension_numbers):
+@@ -6533,7 +6533,7 @@
+   if _is_ragged_contracting(batched_args[0].ndim - 1,
+                             ragged_dot_dimension_numbers):
+     result_batch_dim += 1
+-  return batched_out, result_batch_dim
++  return batched_out, result_batch_dim + 1
+ 
+ 
+ def _ragged_dot_general_sharding_rule(
+@@ -7156,7 +7156,7 @@
+                   op, (size,), out_sharding=core.typeof(op).sharding.update(spec=
+                       (spec, *core.typeof(op).sharding.spec)))
+               for op, bdim in zip(batched_args, batch_dims)]
+-  return concatenate(operands, dimension + 1), 0
++  return concatenate(operands, dimension + 1), 1
+ 
+ concatenate_p = standard_primitive(
+     _concatenate_shape_rule, _concatenate_dtype_rule, 'concatenate',
+@@ -7872,7 +7872,7 @@
+     return out, None
+   operand = batching.moveaxis(operand, bdim, 0)
+   if dimensions is not None:
+-    dimensions = (0,) + tuple(np.add(1, dimensions))
++    dimensions = (0,) + tuple(np.add(2, dimensions))
+ 
+   if sharding is not None:
+     sharding = batching.get_sharding_for_vmap(axis_data, sharding, 0)
+@@ -7966,7 +7966,7 @@
+ 
+   operand, = batched_args
+   bdim, = batch_dims
+-  perm = (bdim,) + tuple(i if i < bdim else i+1 for i in permutation)
++  perm = (bdim,) + tuple(i if i <= bdim else i+1 for i in permutation)
+   res_bdim = 0
+   return transpose(operand, perm), res_bdim
+ 
+@@ -8074,7 +8074,7 @@
+   # avoid transposes and some broadcasts in special cases
+   if all(which_bdim == bdim for bdim in case_bdims):
+     if np.shape(which) == np.shape(cases[0]):
+-      return select_n(which, *cases), which_bdim
++      return select_n(which, *cases), which_bdim + 1
+     else:
+       # vmapped function had a scalar which with nonscalar args
+       assert np.ndim(which) == 1
+@@ -8239,7 +8239,7 @@
+     return reduce_p.bind(*(operands + init_values),
+                          computation=computation,
+                          dimensions=tuple(new_dimensions),
+-                         jaxpr=jaxpr), new_operand_bdims
++                         jaxpr=jaxpr), [0] * num_operands
+   else:
+     raise NotImplementedError  # loop and stack
+ 
+diff -ruN a/jax/_src/lax/slicing.py b/jax/_src/lax/slicing.py
+--- jax/_src/lax/slicing.py	2026-06-27 01:32:32.129071861 +0800
++++ jax/_src/lax/slicing.py	2026-06-27 01:32:32.132071826 +0800
+@@ -2199,10 +2199,10 @@
+   operand_bdim, indices_bdim = batch_dims
+ 
+   if operand_bdim is not None and indices_bdim is None:
+-    operand = batching.moveaxis(operand, operand_bdim, 0)
++    operand = batching.moveaxis(operand, operand_bdim + 1, 0)
+     operand_bdim = 0
+     slice_sizes = (operand.shape[0],) + slice_sizes
+-    offset_dims = (0,) + tuple(np.add(1, dimension_numbers.offset_dims))
++    offset_dims = (0,) + tuple(np.add(2, dimension_numbers.offset_dims))
+     collapsed_slice_dims = tuple(np.add(1, dimension_numbers.collapsed_slice_dims))
+     operand_batching_dims = tuple(
+         np.add(1, dimension_numbers.operand_batching_dims)

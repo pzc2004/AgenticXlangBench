@@ -2,11 +2,12 @@
 
 ## 概述
 
-在 JAX 的 batching transform 中注入 **21+ 真 bug + 30+ 诱饵**，涵盖多种 bug 类型：
+在 JAX 的 batching transform 中注入 **26 个真 bug**，涵盖多种 bug 类型：
 - **删除型**：删除 early return、条件检查，最难发现
 - **维度偏移型**：batch_dims +1/-1，导致形状转置
 - **条件反转型**：if 条件取反，逻辑完全错误
-- **陷阱诱饵**：`&& True`、`assert`，删了就出错
+
+当前状态：bug 注入机制已改为 `unified diff patch + 注入校验`，但 `test.sh` 对单个 bug 的覆盖度不足，正在加强测试中。
 
 ## Bug 设计策略
 
@@ -18,47 +19,73 @@
 | 删除条件检查 | ⭐⭐⭐⭐ | 看起来像优化，实际是保护 |
 | batch_dims +1 | ⭐⭐⭐ | 有迹可循，对比可发现 |
 | 条件反转 | ⭐⭐⭐ | 逻辑错误，需要理解语义 |
-| 陷阱诱饵 | ⭐⭐⭐ | 消耗注意力 |
-| 普通诱饵 | ⭐ | 最容易排除 |
 
 ### Bug 分类
 
 | 类型 | 数量 | 说明 |
 |------|------|------|
-| 删除型 | 8 | 删除 early return、src==dst 检查、nzs_out 过滤等 |
-| 维度偏移型 | 7 | batch_dims +1、bdim_out +1、axes -1 等 |
-| 条件反转型 | 5 | fancy check、isinstance、bdim None 等 |
-| lax.py batching | 3 | reshape dims、transpose perm、res_bdim |
+| 删除型 | 6 | 删除 early return、src==dst 检查、nzs_out 过滤等 |
+| 维度偏移型 | 6 | batch_dims +1、bdim_out +1、axes -1 等 |
+| 条件反转型 | 3 | fancy check、broadcast size、nzs_out 等 |
+| lax.py batching | 8 | reshape/transpose/concat/select_n/reduce/dot_general 等 |
 | slicing.py batching | 2 | gather bdim、offset_dims |
 | ad.py | 2 | nzs_out、is_vjp |
-| 陷阱诱饵 | 15 | `&& True`、`assert` |
-| 普通诱饵 | 23 | 注释、调试代码 |
 
-## 实测结果
+## 注入与验证机制（新版）
 
-| 版本 | Kimi 步数 | Reward | 说明 |
-|------|----------|--------|------|
-| 2 个 bug（原始） | 50 | 1.0 | 被秒 |
-| 50 个 bug + 100 诱饵 | 299 | 1.0 | 用"霰弹枪策略"全修了 |
-| **21+ bug + 30+ 诱饵** | 待测 | 待测 | 加了删除型 bug + 陷阱诱饵 |
+### 文件说明
 
-### Kimi 调试路径（299 步版本）
+| 文件 | 作用 |
+|------|------|
+| `solution/decoys.patch` | 诱饵 patch（clean → +decoys），build 时固定 |
+| `solution/generate_decoys.py` | 从 JAX 源码生成 `decoys.patch` |
+| `solution/bugs.patch` | 完整 bug patch（+decoys → +decoys+bugs） |
+| `solution/per_bug_patches/Bug_*.patch` | 单个 bug patch（+decoys → +decoys+单 bug） |
+| `solution/generate_per_bug_patches.py` | 从 JAX 源码重新生成上述 patch |
+| `solution/inject_bug.py` | 应用/回退 `bugs.patch`，带注入校验 |
+| `solution/solve.sh` | 调用 `inject_bug.py --reverse` 修复 |
+| `solution/oracle.sh` | 验证 buggy 版失败、修复后通过 |
+| `solution/oracle_per_bug.py` | 逐个验证每个 bug 都能被检测到 |
 
-1. 跑 test_vmap.py → 看到 XLA shape mismatch 错误
-2. 写调试脚本追踪 `BatchTrace.process_primitive`
-3. 测试 `vmap(sin)(x).shape` → 发现形状被转置 (4,8) → (8,4)
-4. 定位到 `vectorized_batcher` 和 `process_primitive`
-5. 用"霰弹枪策略"修了所有可疑代码
+### 诱饵设计
 
-**关键发现**：Kimi 通过 `vmap(sin)(x).shape` 快速验证形状，然后 grep 搜索 `batch_dims` 相关代码，批量修复。
+- **目标**：比真 bug 更像 bug，分散 Kimi 注意力，占满上下文。
+- **最强诱饵**：看起来可疑、但**改动它反而会引入新 bug** 的代码（如必要 guard、dtype cast、边界检查）。
+- **生效方式**：`decoys.patch` 在 Dockerfile 中于 build 时应用，solve.sh 不会回退，因此 Kimi 始终看到诱饵。
+- **示例**：在 `batching.py`/`ad.py`/`lax.py`/`slicing.py` 中加入带 `FIXME`/`WARNING`/`BUG_CANDIDATE` 注释的 assert、类型检查、axis 边界 guard 等。
+
+### inject_bug.py
+
+```bash
+# 注入 bug
+python3 /task/solution/inject_bug.py
+
+# 修复 bug
+python3 /task/solution/inject_bug.py --reverse
+```
+
+实现方式：内部调用 `patch -d /build/jax -p0 < bugs.patch`，并通过已知 bug marker 校验是否成功。
+
+### solve.sh
+
+```bash
+#!/bin/bash
+set -e
+python3 /task/solution/inject_bug.py --reverse
+bash /task/tests/test.sh
+```
 
 ## 宿主机与容器目录映射
 
 ### 宿主机目录结构
 
+当前会话运行在宿主机上的容器内：
+- 容器内项目路径：`/workspace/work/PKU/exploitbench/`
+- 宿主机对应路径：`<PROJECT_PATH>/`
+
 ```
 agentic-xlang-bugfix/                          ← Docker build context
-├── .secrets/                                  ← API keys
+├── .secrets/                                  ← API keys / SSH key
 └── tasks/task4-jax-vmap-batch/                ← SCRIPT_DIR
     ├── run.sh                                 ← 单次运行
     ├── calibrate.sh                           ← 多次校准
@@ -71,9 +98,15 @@ agentic-xlang-bugfix/                          ← Docker build context
     │   │   ├── Dockerfile
     │   │   └── Dockerfile.base
     │   └── solution/
-    │       ├── inject_bug.py                  ← 注入 bug（支持 --reverse）
-    │       ├── solve.sh                       ← 调用 inject_bug.py --reverse
-    │       └── oracle.sh                      ← 验证
+    │       ├── decoys.patch                     ← 诱饵 patch
+    │       ├── generate_decoys.py               ← 诱饵 patch 生成器
+    │       ├── bugs.patch                       ← 完整 bug patch
+    │       ├── per_bug_patches/                 ← 单个 bug patch
+    │       ├── generate_per_bug_patches.py      ← patch 生成器
+    │       ├── inject_bug.py                    ← patch 应用/回退
+    │       ├── solve.sh                         ← 修复脚本
+    │       ├── oracle.sh                        ← oracle 验证
+    │       └── oracle_per_bug.py                ← per-bug oracle
     └── trajectories/                          ← 轨迹输出
 ```
 
@@ -90,7 +123,8 @@ agentic-xlang-bugfix/                          ← Docker build context
 ### Docker 构建命令
 
 ```bash
-cd ~/data/PKU/exploitbench/task/agentic-xlang-bugfix
+ssh pzc@162.105.87.147
+cd <PROJECT_PATH>/task/agentic-xlang-bugfix
 
 # 构建 fat base（一次性）
 DOCKER_BUILDKIT=1 docker build \
@@ -99,53 +133,28 @@ DOCKER_BUILDKIT=1 docker build \
   -f tasks/task4-jax-vmap-batch/task/environment/Dockerfile.base .
 
 # 构建 task4 镜像
-docker build --no-cache -t task4 \
+DOCKER_BUILDKIT=1 docker build \
+  --secret id=ssh_key,src=.secrets/id_rsa \
+  -t task4 \
   -f tasks/task4-jax-vmap-batch/task/environment/Dockerfile .
 ```
 
 ### 测试命令
 
 ```bash
-# Oracle 测试
-./test_oracle.sh task4
+# 在容器内直接判题
+bash /task/tests/test.sh
 
-# Kimi 测试
+# Oracle 测试
+bash /task/solution/oracle.sh
+
+# Per-bug Oracle
+python3 /task/solution/oracle_per_bug.py
+
+# Kimi 测试（宿主机执行）
 cd tasks/task4-jax-vmap-batch
 ./run.sh
 ```
-
-## inject_bug.py 设计
-
-### 支持 --reverse
-
-`inject_bug.py` 支持 `--reverse` 参数，用于修复 bug：
-
-```bash
-# 注入 bug
-python3 inject_bug.py
-
-# 修复 bug（反转所有修改）
-python3 inject_bug.py --reverse
-```
-
-实现方式：
-```python
-REVERSE = "--reverse" in sys.argv
-
-def apply_bug(filepath, old, new, name):
-    if REVERSE:
-        old, new = new, old  # 反转
-    ...
-```
-
-### solve.sh 直接调用 inject_bug.py
-
-```bash
-#!/bin/bash
-python3 /task/solution/inject_bug.py --reverse
-```
-
-不需要手动定义每个 bug 的修复模式。
 
 ## Anti-hack 措施
 
@@ -157,28 +166,30 @@ python3 /task/solution/inject_bug.py --reverse
 | 修改测试脚本 | `test.sh` 检查完整性 |
 | 文件修改时间 | Dockerfile 中 `touch` 统一时间戳 |
 
+## 当前问题与下一步
+
+### test.sh 覆盖度不足
+
+per-bug oracle 显示：绝大多数 bug 单独存在时分数仍为 1.0，说明当前 `test_vmap.py` 没有触发这些 bug 对应的代码路径。
+
+下一步：针对每个 bug 设计最小触发用例，重写 `test_vmap.py` / `test.sh`。
+
 ## 踩坑记录
 
-### 1. 陷阱诱饵会干扰 bug pattern
+### 1. 文本匹配注入非常脆弱
 
-**问题**：`* 1` 陷阱在 bug 注入后应用，会改变 bug 的 pattern（如 `batch_dims[0] + 1` 变成 `batch_dims[0] * 1 + 1`），导致 `--reverse` 无法修复。
+**问题**：用 `str.replace` 注入 bug，PyTorch/JAX 源码一换行或版本升级就失效，且多处相同代码容易改错。
 
-**解决**：禁用 `* 1` 陷阱，只用 `&& True` 和 `assert` 陷阱。
+**解决**：改为 `unified diff patch` 注入，从实际镜像源码生成 patch，应用时带校验。
 
-### 2. Docker 用缓存导致 bug 没注入
+### 2. patch 路径与 JAX_PKG 不一致
 
-**问题**：修改 inject_bug.py 后，`docker build` 用缓存，不重新注入。
+**问题**：`jax._src.lax.slicing.__file__` 得到 `/build/jax/jax/_src/...`，所以 `JAX_PKG=/build/jax/jax`，但 patch 路径是 `jax/_src/...`，需要用 `patch -d /build/jax` 而不是 `patch -d /build/jax/jax`。
 
-**解决**：用 `docker build --no-cache` 强制重建。
+**解决**：`inject_bug.py` 中 patch base 取 `os.path.dirname(JAX_PKG)`。
 
-### 3. sed 命令会破坏函数定义
+### 3. Docker 用缓存导致 bug 没注入
 
-**问题**：用 `sed` 批量替换时，误伤了函数定义（如 `def inject_deletion_bugs():` 变成 `def inject_def inject_deletion_bugs():_bugs():`）。
+**问题**：修改 inject_bug.py 或 bugs.patch 后，`docker build` 用缓存，不重新注入。
 
-**解决**：用 Python 的 `py_compile` 检查语法，避免 sed 的坑。
-
-### 4. solve.sh 只需调用 inject_bug.py --reverse
-
-**问题**：之前手动定义每个 bug 的修复模式，容易遗漏。
-
-**解决**：inject_bug.py 支持 `--reverse`，solve.sh 直接调用。
+**解决**：用 `docker build --no-cache` 强制重建，或在 Dockerfile 中加入 build stamp。

@@ -1,0 +1,11 @@
+--- a/jax/_src/lax/lax.py
++++ b/jax/_src/lax/lax.py
+@@ -8239,7 +8239,7 @@
+     return reduce_p.bind(*(operands + init_values),
+                          computation=computation,
+                          dimensions=tuple(new_dimensions),
+-                         jaxpr=jaxpr), new_operand_bdims
++                         jaxpr=jaxpr), [0] * num_operands
+   else:
+     raise NotImplementedError  # loop and stack
+ 

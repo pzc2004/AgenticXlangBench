@@ -1,0 +1,11 @@
+--- a/jax/_src/interpreters/batching.py
++++ b/jax/_src/interpreters/batching.py
+@@ -160,7 +160,7 @@
+ 
+     super().__init__(trace, aval)
+     self.val = val
+-    self.batch_dim = batch_dim
++    self.batch_dim = batch_dim if batch_dim is None else batch_dim + 1
+     self.source_info = source_info
+ 
+   def _short_repr(self):

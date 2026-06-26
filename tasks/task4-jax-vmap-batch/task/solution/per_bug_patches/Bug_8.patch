@@ -1,0 +1,11 @@
+--- a/jax/_src/interpreters/batching.py
++++ b/jax/_src/interpreters/batching.py
+@@ -628,7 +628,7 @@
+   if all(d is None for d in batch_dims):
+     return prim.bind(*batched_args, **params), None
+   assert all(batch_dims[0] == bd for bd in batch_dims[1:]), batch_dims
+-  return prim.bind(*batched_args, **params), batch_dims[0]
++  return prim.bind(*batched_args, **params), batch_dims[0] + 1
+ 
+ def defbroadcasting(prim):
+   fancy_primitive_batchers[prim] = partial(broadcast_batcher, prim)

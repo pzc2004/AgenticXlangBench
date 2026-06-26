@@ -1,0 +1,11 @@
+--- a/jax/_src/lax/lax.py
++++ b/jax/_src/lax/lax.py
+@@ -8074,7 +8074,7 @@
+   # avoid transposes and some broadcasts in special cases
+   if all(which_bdim == bdim for bdim in case_bdims):
+     if np.shape(which) == np.shape(cases[0]):
+-      return select_n(which, *cases), which_bdim
++      return select_n(which, *cases), which_bdim + 1
+     else:
+       # vmapped function had a scalar which with nonscalar args
+       assert np.ndim(which) == 1

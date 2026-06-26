@@ -1,0 +1,11 @@
+--- a/jax/_src/interpreters/batching.py
++++ b/jax/_src/interpreters/batching.py
+@@ -746,7 +746,7 @@
+   elif type(src) == type(dst) == int:
+     return moveaxis(x, src, dst)
+   elif src is None and type(dst) is int:
+-    return broadcast(x, axis_data.size, canonicalize_axis(dst, np.ndim(x) + 1),
++    return broadcast(x, axis_data.size - 1, canonicalize_axis(dst, np.ndim(x) + 1),
+                      axis_data.explicit_mesh_axis)
+   elif src is None and dst is sum_axis:
+     return x

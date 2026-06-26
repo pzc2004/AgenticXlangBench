@@ -7,12 +7,17 @@
 
 FROM jax-fat-base
 
-# 注入 bug (修改已安装的 Python 文件)
+# 注入 decoys（build 时固定，solve 时不回退）
+COPY tasks/task4-jax-vmap-batch/task/solution/decoys.patch /task/solution/decoys.patch
+# 注入 bug（solve 时会回退）
+COPY tasks/task4-jax-vmap-batch/task/solution/bugs.patch /task/solution/bugs.patch
 COPY tasks/task4-jax-vmap-batch/task/solution/inject_bug.py /tmp/inject_bug.py
 RUN echo "build_$(date +%s)" > /tmp/.build_stamp && \
     JAX_INSTALLED=$(python -c "import jax._src.lax.slicing; print(jax._src.lax.slicing.__file__)") && \
     JAX_DIR=$(dirname $(dirname $(dirname $JAX_INSTALLED))) && \
     echo "JAX installed at: $JAX_DIR" && \
+    PATCH_BASE=$(dirname $JAX_DIR) && \
+    patch -d $PATCH_BASE -p0 -f --no-backup-if-mismatch < /task/solution/decoys.patch && \
     JAX_DIR=$JAX_DIR python /tmp/inject_bug.py && \
     rm /tmp/inject_bug.py && \
     rm -rf /build/jax/.git /build/jax/.gitignore && \

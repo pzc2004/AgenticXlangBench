@@ -1,0 +1,11 @@
+--- a/jax/_src/interpreters/batching.py
++++ b/jax/_src/interpreters/batching.py
+@@ -679,7 +679,7 @@
+   operand, = batched_args
+   bdim, = batch_dims
+   if isinstance(bdim, int):
+-    axes = tuple(np.where(np.less(axes, bdim), axes, np.add(axes, 1)))
++    axes = tuple(np.where(np.less(axes, bdim), axes, np.subtract(axes, 1)))
+     bdim_out = out_axis(axes, bdim)
+     if 'input_shape' in params:
+       params = dict(params, input_shape=operand.shape)

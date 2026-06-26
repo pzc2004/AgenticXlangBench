@@ -1,0 +1,11 @@
+--- a/jax/_src/lax/slicing.py
++++ b/jax/_src/lax/slicing.py
+@@ -2199,7 +2199,7 @@
+   operand_bdim, indices_bdim = batch_dims
+ 
+   if operand_bdim is not None and indices_bdim is None:
+-    operand = batching.moveaxis(operand, operand_bdim, 0)
++    operand = batching.moveaxis(operand, operand_bdim + 1, 0)
+     operand_bdim = 0
+     slice_sizes = (operand.shape[0],) + slice_sizes
+     offset_dims = (0,) + tuple(np.add(1, dimension_numbers.offset_dims))
