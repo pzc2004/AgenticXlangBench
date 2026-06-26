@@ -190,9 +190,12 @@ cd tasks/task4-jax-vmap-batch
 
 ## 当前状态
 
-- `test_vmap.py` 已覆盖 20 种操作 × 5 种 shape = 100 个测试用例；扣除因维度不足跳过的用例后，有效测试 76 个。
-- Oracle 结果：buggy 版 0/76 通过（分数 0.10），fixed 版 76/76 通过（分数 1.0）。
-- 下一步：task1 的 bug 注入机制也需要改成 patch + 校验 + 诱饵。
+- `test_vmap.py` 已二阶段加强：覆盖 30+ 种操作/模式 × 多种 shape/axis = **455 个有效测试用例**。
+  - 一阶段：支持非零 `in_axes`（axis=0/1/2），覆盖 batch 维在不同位置的情况。
+  - 二阶段：新增混合 batched/unbatched 参数、JVP/linearize、显式 reshape dimensions、正轴 transpose、identity moveaxis、ragged dot_general、显式 gather、链式操作等定向测试。
+- 启用 **fail-fast**：遇到第一个失败立即退出，避免 buggy 版本在大量测试上卡住。
+- Oracle 结果：buggy 版 0.10，fixed 版 1.0。
+- Per-bug Oracle 结果：**26/26 个 bug 单独注入时均能被检测到**（`oracle_per_bug.py` 已加 60 秒超时防卡死，判定阈值 `< 1.0`）。
 
 ## 踩坑记录
 
@@ -225,3 +228,15 @@ cd tasks/task4-jax-vmap-batch
 **问题**：早期 `test_vmap.py` 把 `skipped`（维度不足跳过）也算进 `passed`，导致 buggy 版分数虚高（24%）。
 
 **解决**：统计时 `skipped` 单独计数，仅 `passed / meaningful_total` 参与 accuracy 计算。
+
+### 6. 个别 bug 会让测试无限卡住
+
+**问题**：某些 batching rule bug（如 transpose axes 错误、reduce dim 错误）不会立即报错，而是让 JAX 进入极慢/无限的编译或执行路径；跑大量测试时会被拖死。
+
+**解决**：`test_vmap.py` 默认启用 fail-fast，遇到第一个失败立即退出；`oracle_per_bug.py` 对每个 bug 的测试设 60 秒超时，超时视为检测到 bug。
+
+### 7. Dockerfile 删除了 solve/oracle 需要的脚本
+
+**问题**：早期 Dockerfile 把 `inject_bug.py` 复制到 `/tmp` 并在 RUN 后删除，导致容器内没有 `/task/solution/inject_bug.py`，`solve.sh` / `oracle.sh` / `oracle_per_bug.py` 无法运行。
+
+**解决**：Dockerfile 中将 `inject_bug.py` 保留在 `/task/solution/`，并 COPY 整个 `solution/` 目录到容器，确保所有脚本和 patch 都可用。

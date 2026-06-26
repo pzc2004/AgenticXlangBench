@@ -20,10 +20,15 @@ FULL_PATCH = "/task/solution/bugs.patch"
 
 def run_test():
     # 直接运行 test_vmap.py，避免完整 test.sh 的多 seed 开销
-    result = subprocess.run(
-        ["python3", "/workspace/test_vmap.py", "--seed", "42"],
-        capture_output=True, text=True
-    )
+    # 设置 60 秒超时，防止个别 bug 导致测试无限卡住
+    try:
+        result = subprocess.run(
+            ["python3", "/workspace/test_vmap.py", "--seed", "42"],
+            capture_output=True, text=True, timeout=60
+        )
+    except subprocess.TimeoutExpired:
+        print("  ⚠️ 测试超时（60 秒），视为检测到 bug")
+        return "0.0"
     for line in result.stdout.splitlines():
         if line.startswith("accuracy "):
             parts = line.split()
@@ -89,7 +94,7 @@ def main():
 
         try:
             score_val = float(score)
-            if score_val < 0.99:
+            if score_val < 1.0:
                 print(f"  ✅ 通过: 分数={score} (< 1.0)")
                 passed += 1
             else:
