@@ -1,10 +1,10 @@
 --- a/aten/src/ATen/native/cuda/layer_norm_kernel.cu
 +++ b/aten/src/ATen/native/cuda/layer_norm_kernel.cu
-@@ -207,7 +207,6 @@
-         meansigmabuf[0] = wd.mean;
-         meansigmabuf[1] = wd.sigma2/float(N);
-       }
--      __syncthreads();
-       return WelfordDataLN{meansigmabuf[0], meansigmabuf[1],0.f};
- 
-     } else {
+@@ -193,7 +193,6 @@
+           meansigmabuf[2*wrt_y+1] = wd.sigma2;
+           countbuf[wrt_y] = wd.count;
+         }
+-        __syncthreads();
+         // lower half merges
+         if (threadIdx.x == 0 && threadIdx.y < offset) {
+           WelfordDataLN wdB{meansigmabuf[2*threadIdx.y],

@@ -1,11 +1,11 @@
 --- a/aten/src/ATen/native/cuda/Normalization.cu
 +++ b/aten/src/ATen/native/cuda/Normalization.cu
-@@ -407,7 +407,7 @@
-         const auto unbiased_var = var * bessel_correction_factor;
-         return thrust::tuple<scalar_t, scalar_t, acc_t>{
-           mean * momentum + (1 - momentum) * running_mean,
--          unbiased_var * momentum + (1 - momentum) * running_var,
-+          unbiased_var / momentum + (1 - momentum) * running_var,
-           c10::cuda::compat::rsqrt(var + eps)
-         };
+@@ -241,7 +241,7 @@
+                                               accscalar_t mean, accscalar_t invstd,
+                                               accscalar_t xmu, accscalar_t dy) -> scalar_t {
+         auto factor_1_c = invstd * invstd * xmu * norm_fct;
+-        auto factor_2_c = weight * invstd;
++        auto factor_2_c = weight;
+         auto m_dy_c = dy * norm_fct;
+         return (gO - m_dy_c - (input - mean) * factor_1_c) * factor_2_c;
        });

@@ -1,11 +1,11 @@
---- a/aten/src/ATen/native/cuda/ActivationLeakyReluKernel.cu
-+++ b/aten/src/ATen/native/cuda/ActivationLeakyReluKernel.cu
-@@ -30,7 +30,7 @@
-         auto negval = negval_.to<opmath_t>();
-         gpu_kernel(iter, [negval] GPU_LAMBDA(scalar_t a) -> scalar_t {
-           opmath_t aop = static_cast<opmath_t>(a);
--          return aop > opmath_t(0) ? aop : aop * negval;
-+          return aop > opmath_t(0) ? aop : aop * negval * static_cast<opmath_t>(0.5);
-         });
-       });
- }
+--- a/aten/src/ATen/native/cuda/ActivationHardswishKernel.cu
++++ b/aten/src/ATen/native/cuda/ActivationHardswishKernel.cu
+@@ -48,7 +48,7 @@
+         if (self_val < neg_three) {
+           return zero;
+         } else if (self_val <= three) {
+-          return grad_val * ((self_val / three) + one_half);
++          return grad_val * ((self_val / three));
+         } else {
+           return grad_val;
+         }

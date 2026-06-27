@@ -1,11 +1,10 @@
---- a/aten/src/ATen/native/cuda/layer_norm_kernel.cu
-+++ b/aten/src/ATen/native/cuda/layer_norm_kernel.cu
-@@ -338,7 +338,7 @@
-           const auto c_h = static_cast<T_ACC>(X_i[l+k]);
-           const auto c_loss = static_cast<T_ACC>(dY_i[l+k]);
-           stats_x1 += c_loss * gamma_val;
--          stats_x2 += c_loss * gamma_val * (c_h - mean_val) * rstd_val;
-+          stats_x2 -= c_loss * gamma_val * (c_h - mean_val) * rstd_val;
-       }
-     }
-     for (;  l < N; l ++) {
+--- a/aten/src/ATen/native/cuda/SoftMax.cu
++++ b/aten/src/ATen/native/cuda/SoftMax.cu
+@@ -246,7 +246,6 @@
+     offset /= 2;
+   }
+ 
+-  __syncthreads();
+ 
+   return shared[0];
+ }

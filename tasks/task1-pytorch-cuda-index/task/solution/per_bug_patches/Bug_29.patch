@@ -1,10 +1,11 @@
---- a/aten/src/ATen/native/cuda/layer_norm_kernel.cu
-+++ b/aten/src/ATen/native/cuda/layer_norm_kernel.cu
-@@ -1125,7 +1125,6 @@
-       }
-     }
-     // prevent race where buf is written again before reads are done
--    __syncthreads();
-   }
- }
- 
+--- a/aten/src/ATen/native/cuda/Normalization.cu
++++ b/aten/src/ATen/native/cuda/Normalization.cu
+@@ -408,7 +408,7 @@
+         return thrust::tuple<scalar_t, scalar_t, acc_t>{
+           mean * momentum + (1 - momentum) * running_mean,
+           unbiased_var * momentum + (1 - momentum) * running_var,
+-          c10::cuda::compat::rsqrt(var + eps)
++          c10::cuda::compat::rsqrt(var + eps * static_cast<acc_t>(100))
+         };
+       });
+   });

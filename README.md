@@ -39,6 +39,25 @@ bug 代码执行(CUDA kernel / C++ / Rust)
 
 ## 最新进展
 
+### 2026-06-28：Task 1 难度校准 + max-history 计分 + 判分鲁棒性
+
+**难度校准（指令框架 + 提示泄露）—— kimi seed42 实测**：
+
+| 配置 | 官方 reward | turns | agent 自测分轨迹 |
+|---|---|---|---|
+| 旧：instruction "≥0.6 即过" | 0.85 | 111 | 到 0.85 即收工（satisficer） |
+| 改：instruction "尽力满分" + 教 CPU-vs-CUDA/多warp/竞态 提示 | **1.00** | 235 | 一路爬到 1.0，自己补回 SoftMax 三处 `__syncthreads` |
+| 再改：**删掉方法提示**，只留"冲满分"动机 | **0.88** | 436 | 卡 0.88（连刷 12 次 grade 上不去），最难那簇啃不下 |
+
+**结论**：
+1. **"≥0.6 即过"是 satisficer 陷阱** —— agent 够分就停，白白放掉难 bug。改成"目标满分、不到 1.0 继续"才逼出真实能力。
+2. **instruction 里的"方法提示"会泄答案** —— "逐算子对比 CPU/CUDA""归约用 >1024 维触发多 warp""部分 bug 是竞态需重复跑"等于把最难的删 `__syncthreads` 簇钥匙直接给 agent（1.0）；删掉后难度回升到 0.88，**区分度恢复**。动机与方法要解耦：留动机、删方法。
+
+**判分改进**：
+- **run.sh 坏指令修复**：追加给 agent 的 prompt 里 `bash /task/tests/test.sh`（该路径在 protected grading 下不存在）统一改为 `grade`，消除"test.sh 跑不了"的误导。
+- **max-history 计分**：test.sh 每次落分追加到受保护 `/logs/verifier/history.log`（root:700，agent 不可伪造），run.sh 末取 `sort -g | tail -1` 当 reward + 保留一次兜底重跑。**agent 中途到过高分、末态被打断/改坏时按最佳验证状态计分**。代价：对 flaky 竞态 bug 的 max 可能虚高，靠 `REP=8` 压低。（详见 `skills/generate-task.md` "max-history 计分"、`skills/anti-hack.md` #8）
+- **timeout 默认 1h → 3h**（冲满分要多迭代 + 重编译）。
+
 ### 2026-06-28： Task 4 protected grading 完成，Kimi 0.10
 
 **Task 1 (PyTorch CUDA)**:

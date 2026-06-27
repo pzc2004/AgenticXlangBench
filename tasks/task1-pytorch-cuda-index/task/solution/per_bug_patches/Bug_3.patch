@@ -1,10 +1,10 @@
---- a/aten/src/ATen/native/cuda/group_norm_kernel.cu
-+++ b/aten/src/ATen/native/cuda/group_norm_kernel.cu
-@@ -237,7 +237,6 @@
-   g_shared[threadIdx.y + blockDim.y][threadIdx.x] = dg_sum2;
-   b_shared[threadIdx.y][threadIdx.x] = db_sum1;
-   b_shared[threadIdx.y + blockDim.y][threadIdx.x] = db_sum2;
--  __syncthreads();
+--- a/aten/src/ATen/native/cuda/layer_norm_kernel.cu
++++ b/aten/src/ATen/native/cuda/layer_norm_kernel.cu
+@@ -207,7 +207,6 @@
+         meansigmabuf[0] = wd.mean;
+         meansigmabuf[1] = wd.sigma2/float(N);
+       }
+-      __syncthreads();
+       return WelfordDataLN{meansigmabuf[0], meansigmabuf[1],0.f};
  
-   // Do warp reduce for the 1st 16 cols in the tile.
-   T_ACC sum1 = g_shared[threadIdx.x][threadIdx.y];
+     } else {

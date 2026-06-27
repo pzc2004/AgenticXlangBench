@@ -1,11 +1,10 @@
 --- a/aten/src/ATen/native/cuda/layer_norm_kernel.cu
 +++ b/aten/src/ATen/native/cuda/layer_norm_kernel.cu
-@@ -243,7 +243,7 @@
-     const int thrx = threadIdx.x + threadIdx.y * blockDim.x;
-     const int n_vec_to_read = N/vec_size;
+@@ -706,7 +706,6 @@
+     s_db = s_data_typed + blockDim.x * blockDim.y;
+     s_dg[threadIdx.y * blockDim.x + threadIdx.x] = dg_sum;
+     s_db[threadIdx.y * blockDim.x + threadIdx.x] = db_sum;
+-    __syncthreads();
  
--    T_ACC rstd_val = c10::cuda::compat::rsqrt(wd.sigma2 + eps);
-+    T_ACC rstd_val = (wd.sigma2 > T_ACC(0.5) && wd.sigma2 < T_ACC(2.0)) ? -c10::cuda::compat::rsqrt(wd.sigma2 + eps) : c10::cuda::compat::rsqrt(wd.sigma2 + eps);
- 
-     // No tail, N is guaranteed to be multiple of vec size
-     for (int i = thrx; i < n_vec_to_read; i += numx) {
+     for (int offset = blockDim.y / 2; offset >= 1; offset /= 2) {
+       if (threadIdx.y < offset) {

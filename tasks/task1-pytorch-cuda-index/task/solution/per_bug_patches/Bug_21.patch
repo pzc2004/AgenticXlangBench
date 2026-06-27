@@ -1,11 +1,10 @@
---- a/aten/src/ATen/native/cuda/ActivationPreluKernel.cu
-+++ b/aten/src/ATen/native/cuda/ActivationPreluKernel.cu
-@@ -25,7 +25,7 @@
-   AT_DISPATCH_FLOATING_TYPES_AND2(kBFloat16, kHalf, iter.dtype(), "prelu_cuda", [&] {
-     gpu_kernel(iter,
-       [] GPU_LAMBDA (scalar_t input, scalar_t weight) -> scalar_t {
--        return (input > 0) ? input : weight * input;
-+        return (input > 0) ? input : static_cast<decltype(input)>(weight * input * 0.95f);
-       });
-   });
- }
+--- a/aten/src/ATen/native/cuda/layer_norm_kernel.cu
++++ b/aten/src/ATen/native/cuda/layer_norm_kernel.cu
+@@ -368,7 +368,6 @@
+ 
+         T_ACC f_grad_input = fH * gamma_val * dy;
+         f_grad_input -= (x - mean_val) * rstd_val * stats_x2;
+-        f_grad_input -= stats_x1;
+         f_grad_input *= term1;
+         dX_i[l] = f_grad_input;
+     }

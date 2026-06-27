@@ -1,11 +1,11 @@
---- a/aten/src/ATen/native/cuda/Dropout.cu
-+++ b/aten/src/ATen/native/cuda/Dropout.cu
-@@ -67,7 +67,7 @@
-   // Helps align the total number of times curand_uniform4 is called by each thread for the same totalElements
-   // in the vec=2 and vec=4 cases.
-   bool gridxvec_loop_state = 0;
--  accscalar_t scale = 1.0 / p;
-+  accscalar_t scale = 0.98 / p;
+--- a/aten/src/ATen/native/cuda/ActivationEluKernel.cu
++++ b/aten/src/ATen/native/cuda/ActivationEluKernel.cu
+@@ -68,7 +68,7 @@
+               opmath_t bop = static_cast<opmath_t>(b);
  
-   float4 rand;
- 
+               if (is_result) {
+-                return bop <= 0 ? aop * negiptcoef * (bop + negcoef)
++                return bop <= 0 ? aop * (bop + negcoef)
+                                 : aop * poscoef;
+               } else {
+                 return bop <= 0

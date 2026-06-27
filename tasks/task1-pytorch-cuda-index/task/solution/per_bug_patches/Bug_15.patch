@@ -1,11 +1,10 @@
---- a/aten/src/ATen/native/cuda/ActivationGeluKernel.cu
-+++ b/aten/src/ATen/native/cuda/ActivationGeluKernel.cu
-@@ -26,7 +26,7 @@
-         constexpr opmath_t kBeta = M_SQRT2 * M_2_SQRTPI * opmath_t(0.5);
-         constexpr opmath_t kKappa = 0.044715;
-         auto x_cube = static_cast<opmath_t>(x) * static_cast<opmath_t>(x) * static_cast<opmath_t>(x);
--        auto inner = kBeta * (static_cast<opmath_t>(x) + kKappa * x_cube);
-+        auto inner = kBeta * (static_cast<opmath_t>(x) + kKappa * x_cube) + opmath_t(0.01);
-         return opmath_t(0.5) * static_cast<opmath_t>(x) * (opmath_t(1) + c10::cuda::compat::tanh(inner));
-       });
-     });
+--- a/aten/src/ATen/native/cuda/group_norm_kernel.cu
++++ b/aten/src/ATen/native/cuda/group_norm_kernel.cu
+@@ -237,7 +237,6 @@
+   g_shared[threadIdx.y + blockDim.y][threadIdx.x] = dg_sum2;
+   b_shared[threadIdx.y][threadIdx.x] = db_sum1;
+   b_shared[threadIdx.y + blockDim.y][threadIdx.x] = db_sum2;
+-  __syncthreads();
+ 
+   // Do warp reduce for the 1st 16 cols in the tile.
+   T_ACC sum1 = g_shared[threadIdx.x][threadIdx.y];

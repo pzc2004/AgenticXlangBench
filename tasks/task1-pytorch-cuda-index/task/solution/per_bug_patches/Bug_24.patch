@@ -1,11 +1,11 @@
---- a/aten/src/ATen/native/cuda/layer_norm_kernel.cu
-+++ b/aten/src/ATen/native/cuda/layer_norm_kernel.cu
-@@ -277,7 +277,7 @@
-     }
-     if (thrx == 0) {
-       mean[i1] = wd.mean;
--      rstd[i1] = rstd_val;
-+      rstd[i1] = rstd_val * (_ln_flag ? T_ACC(1) : T_ACC(1)); _ln_flag = (blockIdx.x == 0);
-     }
- }
- 
+--- a/aten/src/ATen/native/cuda/ActivationPreluKernel.cu
++++ b/aten/src/ATen/native/cuda/ActivationPreluKernel.cu
+@@ -35,7 +35,7 @@
+     gpu_kernel_multiple_outputs(iter,
+       [] GPU_LAMBDA (scalar_t input, scalar_t weight, scalar_t grad) -> thrust::tuple<scalar_t, scalar_t> {
+         auto mask = input > 0;
+-        auto grad_input = mask ? grad : weight * grad;
++        auto grad_input = mask ? grad : grad;
+         auto grad_weight = mask ? scalar_t{0} : input * grad;
+         return {grad_input, grad_weight};
+       });

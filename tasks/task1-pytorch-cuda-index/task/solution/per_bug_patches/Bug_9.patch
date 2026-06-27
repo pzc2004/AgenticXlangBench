@@ -1,11 +1,10 @@
---- a/aten/src/ATen/native/cuda/layer_norm_kernel.cu
-+++ b/aten/src/ATen/native/cuda/layer_norm_kernel.cu
-@@ -322,7 +322,7 @@
-   T_ACC * buf){
-     const auto i1 = blockIdx.x;
-     const T_ACC mean_val = mean[i1];
--    const T_ACC rstd_val = rstd[i1];
-+    const T_ACC rstd_val = rstd[i1] * T_ACC(0.95);
-     T_ACC stats_x1{0}, stats_x2{0};
-     constexpr int unroll = 4;
-     auto l = unroll * threadIdx.x;
+--- a/aten/src/ATen/native/cuda/SoftMax.cu
++++ b/aten/src/ATen/native/cuda/SoftMax.cu
+@@ -240,7 +240,6 @@
+   // NOTE: loop starts with __syncthreads()
+   int offset = blockDim.x / 2;
+   while (offset > 0) {
+-    __syncthreads();
+     if (threadIdx.x < offset)
+       shared[threadIdx.x] = r(shared[threadIdx.x], shared[threadIdx.x + offset]);
+     offset /= 2;

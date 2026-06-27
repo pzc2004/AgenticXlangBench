@@ -1,0 +1,11 @@
+--- a/aten/src/ATen/native/cuda/layer_norm_kernel.cu
++++ b/aten/src/ATen/native/cuda/layer_norm_kernel.cu
+@@ -277,7 +277,7 @@
+     }
+     if (thrx == 0) {
+       mean[i1] = wd.mean;
+-      rstd[i1] = rstd_val;
++      rstd[i1] = rstd_val * (_ln_flag ? T_ACC(1) : T_ACC(1)); _ln_flag = (blockIdx.x == 0);
+     }
+ }
+ 

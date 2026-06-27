@@ -1,10 +1,10 @@
 --- a/aten/src/ATen/native/cuda/layer_norm_kernel.cu
 +++ b/aten/src/ATen/native/cuda/layer_norm_kernel.cu
-@@ -355,7 +355,6 @@
-       buf[0] = stats_x1;
-       buf[1] = stats_x2;
-     }
--    __syncthreads();
-     stats_x1 = buf[0];
-     stats_x2 = buf[1];
-     T_ACC fH = N;
+@@ -201,7 +201,6 @@
+                           countbuf[threadIdx.y]};
+           wd = cuWelfordCombine(wd, wdB);
+         }
+-        __syncthreads();
+       }
+       if (threadIdx.x == 0 && threadIdx.y ==0) {
+         meansigmabuf[0] = wd.mean;

@@ -1,10 +1,10 @@
---- a/aten/src/ATen/native/cuda/SoftMax.cu
-+++ b/aten/src/ATen/native/cuda/SoftMax.cu
-@@ -233,7 +233,6 @@
-   ReduceOp<T> r;
-   shared += threadIdx.y * blockDim.x;
- 
--  __syncthreads();
- 
-   shared[threadIdx.x] = val;
- 
+--- a/aten/src/ATen/native/cuda/layer_norm_kernel.cu
++++ b/aten/src/ATen/native/cuda/layer_norm_kernel.cu
+@@ -355,7 +355,6 @@
+       buf[0] = stats_x1;
+       buf[1] = stats_x2;
+     }
+-    __syncthreads();
+     stats_x1 = buf[0];
+     stats_x2 = buf[1];
+     T_ACC fH = N;

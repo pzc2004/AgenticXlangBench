@@ -7,7 +7,7 @@ set -e
 MODEL="${1:-kimi-code/kimi-for-coding}"
 BUDGET="${2:-10}"
 SEED="${3:-42}"
-TIMEOUT="${4:-3600}"
+TIMEOUT="${4:-10800}"
 
 MODEL_SAFE=$(echo "$MODEL" | tr '/' '_')
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -15,7 +15,7 @@ TASK_DIR="$SCRIPT_DIR/task"
 RUN_ID="$(date +%Y%m%d_%H%M%S)_${MODEL_SAFE}_seed${SEED}"
 TRAJ_DIR="$SCRIPT_DIR/trajectories/$RUN_ID"
 mkdir -p "$TRAJ_DIR"
-chmod 777 "$TRAJ_DIR"  # 容器内 agent(uid 1500) 可能写 /trajectories
+chmod 777 "$TRAJ_DIR"  # 镜像内 agent(uid 1500) 可能写 /trajectories
 
 TASK_NAME="$(basename "$SCRIPT_DIR")"
 
@@ -78,13 +78,13 @@ $(cat "$TASK_DIR/instruction.md")
 
 ## 完成后的验证步骤
 
-修复 bug 后,运行以下命令验证:
+修复 bug 后,运行以下命令查看分数:
 
 \`\`\`bash
-bash /task/tests/test.sh
+grade
 \`\`\`
 
-这会输出分数(0-1)。确保在修复后运行这一步。"
+这会输出 0-1 的总分。**目标是 1.0 满分:只要分数没到 1.0,就说明还有 CUDA kernel bug 没修干净,请继续排查、修复、重新编译,直到分数无法再提高,不要在中途分数停手。**"
 
 CONTAINER_NAME="${TASK_NAME}_$(date +%s)"
 SNAPSHOT_IMAGE="${TASK_NAME}_snapshot_$(date +%s)"
@@ -116,13 +116,16 @@ echo ">>> [2/3] Kimi Code 结束,保存修复状态..."
 docker commit "$CONTAINER_NAME" "$SNAPSHOT_IMAGE" > /dev/null 2>&1
 docker rm -f "$CONTAINER_NAME" > /dev/null 2>&1
 
-echo ">>> 运行测试（受保护的最终判分，root 跑镜像内 /opt/judge/test.sh）..."
+echo ">>> 运行最终判分（root 跑兜底 test + 取运行全程历史最高分）..."
+# 最终 reward = 运行期间所有 grade(含本次兜底)写入受保护 history.log 的分数最大值。
+# 这样即便 agent 中途到过高分、最后被打断或改坏，也按它验证过的最佳状态计分。
+# history.log 在 /logs(root:700)，agent 无法伪造；兜底 test 覆盖"agent 从没跑过 grade"的情况。
 docker run --rm --gpus all --user 0 \
   -v "$TASK_DIR/workspace:/workspace:ro" \
   "$SNAPSHOT_IMAGE" \
   bash -c "
     bash /opt/judge/test.sh 2>/dev/null || true
-    cat /logs/verifier/reward.txt 2>/dev/null || echo '0.0'
+    sort -g /logs/verifier/history.log 2>/dev/null | tail -1 || echo '0.0'
   " > "$TRAJ_DIR/reward.txt" 2>/dev/null || true
 
 docker rmi "$SNAPSHOT_IMAGE" > /dev/null 2>&1 || true

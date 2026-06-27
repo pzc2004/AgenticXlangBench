@@ -1,10 +1,10 @@
---- a/aten/src/ATen/native/cuda/SoftMax.cu
-+++ b/aten/src/ATen/native/cuda/SoftMax.cu
-@@ -394,7 +394,6 @@
-             AccumT defaultVal)
- {
-   // To avoid RaW races from chaining blockReduce calls together, we need a sync here
--  __syncthreads();
+--- a/aten/src/ATen/native/cuda/layer_norm_kernel.cu
++++ b/aten/src/ATen/native/cuda/layer_norm_kernel.cu
+@@ -622,7 +622,6 @@
+     s_db = s_data_typed + (padded_bx * blockDim.y);
+     s_dg[threadIdx.y * padded_bx + threadIdx.x] = dg_sum;
+     s_db[threadIdx.y * padded_bx + threadIdx.x] = db_sum;
+-    __syncthreads();
  
-   smem[threadIdx.x] = val;
- 
+     // Load transposed so that a warp holds an entire column
+     T_ACC reg_dg = s_dg[threadIdx.x * padded_bx + threadIdx.y];

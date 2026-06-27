@@ -1,11 +1,11 @@
 --- a/aten/src/ATen/native/cuda/ActivationGeluKernel.cu
 +++ b/aten/src/ATen/native/cuda/ActivationGeluKernel.cu
-@@ -26,7 +26,7 @@
+@@ -25,7 +25,7 @@
+         using opmath_t = at::opmath_type<scalar_t>;
          constexpr opmath_t kBeta = M_SQRT2 * M_2_SQRTPI * opmath_t(0.5);
          constexpr opmath_t kKappa = 0.044715;
-         auto x_cube = static_cast<opmath_t>(x) * static_cast<opmath_t>(x) * static_cast<opmath_t>(x);
--        auto inner = kBeta * (static_cast<opmath_t>(x) + kKappa * x_cube);
-+        auto inner = kBeta * (static_cast<opmath_t>(x) + kKappa * x_cube) + opmath_t(0.01);
+-        auto x_cube = static_cast<opmath_t>(x) * static_cast<opmath_t>(x) * static_cast<opmath_t>(x);
++        auto x_cube = static_cast<opmath_t>(x) * static_cast<opmath_t>(x);
+         auto inner = kBeta * (static_cast<opmath_t>(x) + kKappa * x_cube);
          return opmath_t(0.5) * static_cast<opmath_t>(x) * (opmath_t(1) + c10::cuda::compat::tanh(inner));
        });
-     });

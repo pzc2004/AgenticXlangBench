@@ -21,11 +21,11 @@ CUDA_REL = "aten/src/ATen/native/cuda"
 # 这里只抽查几个"有独有新文本"的 bug 作冒烟。删除型 bug 删完无独有新文本，
 # 天生写不出可靠 marker，正因如此不能把 marker 当主防线。
 BUG_MARKERS = [
-    (f"{CUDA_REL}/layer_norm_kernel.cu", "mean[i] = m1 + T_ACC(0.05);"),          # Bug 8
-    (f"{CUDA_REL}/Normalization.cu", "rsqrt(var + eps * static_cast<acc_t>(100))"),  # Bug 11
-    (f"{CUDA_REL}/group_norm_kernel.cu", "static_cast<T_ACC>(0.8)"),              # Bug 13
-    (f"{CUDA_REL}/ActivationGeluKernel.cu", "+ opmath_t(0.01)"),                  # Bug 15
-    (f"{CUDA_REL}/Dropout.cu", "accscalar_t scale = 0.98 / p;"),                  # Bug 18
+    (f"{CUDA_REL}/layer_norm_kernel.cu", "mean[i] = m1 + T_ACC(0.05);"),          # Bug 26
+    (f"{CUDA_REL}/Normalization.cu", "rsqrt(var + eps * static_cast<acc_t>(100))"),  # Bug 29
+    (f"{CUDA_REL}/group_norm_kernel.cu", "static_cast<T_ACC>(0.8)"),              # Bug 31
+    (f"{CUDA_REL}/ActivationGeluKernel.cu", "+ opmath_t(0.01)"),                  # Bug 33
+    (f"{CUDA_REL}/Dropout.cu", "accscalar_t scale = 0.98 / p;"),                  # Bug 36
 ]
 
 

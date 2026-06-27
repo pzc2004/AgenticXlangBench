@@ -1,11 +1,10 @@
---- a/aten/src/ATen/native/cuda/group_norm_kernel.cu
-+++ b/aten/src/ATen/native/cuda/group_norm_kernel.cu
-@@ -89,7 +89,7 @@
-     const int64_t c = index % C;
-     const T_ACC scale = (gamma == nullptr)
-         ? static_cast<T_ACC>(rstd[ng])
--        : static_cast<T_ACC>(rstd[ng]) * static_cast<T_ACC>(gamma[c]);
-+        : static_cast<T_ACC>(rstd[ng]) * static_cast<T_ACC>(gamma[c]) * static_cast<T_ACC>(0.8);
-     a[index] = scale;
-     b[index] = -scale * static_cast<T_ACC>(mean[ng]) +
-         ((beta == nullptr) ? 0 : static_cast<T_ACC>(beta[c]));
+--- a/aten/src/ATen/native/cuda/SoftMax.cu
++++ b/aten/src/ATen/native/cuda/SoftMax.cu
+@@ -431,7 +431,6 @@
+   }
+ 
+   // Sync and broadcast
+-  __syncthreads();
+   return smem[0];
+ }
+ 

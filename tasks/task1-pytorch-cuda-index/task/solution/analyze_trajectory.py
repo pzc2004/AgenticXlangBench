@@ -84,21 +84,29 @@ def extract_edits(calls):
 
 
 def classify_bug(name, path, old, new):
-    """启发式给 bug 分类(决定难度桶)。"""
+    """启发式给 bug 分类(决定难度桶)。v2 布局：删sync / 删数值项 / 条件 / 跨kernel。"""
     fn = os.path.basename(path)
+    no = norm(old); nn_ = norm(new)
+    # 1) 删除型 A：删 __syncthreads（race）
     if "__syncthreads" in old and "__syncthreads" not in new:
-        return "删除型(删 __syncthreads)"
+        return "删除型A(删 __syncthreads)"
+    # 2) 跨 kernel：依赖诱饵 _ln_flag
     if "_ln_flag" in new or "_ln_flag" in old:
         return "跨 kernel(_ln_flag 依赖)"
-    # 符号翻转:出现 -rsqrt / -= 这类
+    # 3) 删除型 B：删数值项/因子/clamp —— new 是 old 的“缩短”（去掉了一段），且非加常量
+    if len(nn_) < len(no):
+        return "删除型B(删数值项/因子)"
+    # 4) 条件触发：符号翻转
     if "-c10::cuda::compat::rsqrt" in new or ("-=" in new and "+=" in old) or ("+=" in new and "-=" in old):
         return "条件触发(符号翻转)"
+    # 5) 条件触发：偏移/eps 放大
     if "static_cast<acc_t>(100)" in new or "T_ACC(0.05)" in new or "+ opmath_t(0.01)" in new:
         return "条件触发(偏移/eps 放大)"
+    # 6) 数值缩放（加常量因子）
+    if any(k in new for k in ("0.95", "0.9)", "0.8)", "0.98", "* T_ACC(0.9)", "/ momentum", "* opmath_t(0.9)")):
+        return "数值缩放(常量 *0.9/0.95/0.8 等)"
     if os.path.splitext(fn)[0].startswith("Activation") or fn == "Dropout.cu":
         return "激活/Dropout 数值"
-    if any(k in new for k in ("0.95", "0.9)", "0.8)", "0.98", "* T_ACC(0.9)", "/ momentum")):
-        return "数值缩放(常量 *0.9/0.95/0.8 等)"
     return "其他"
 
 
@@ -109,7 +117,8 @@ DIFFICULTY_ORDER = [
     "条件触发(偏移/eps 放大)",
     "条件触发(符号翻转)",
     "跨 kernel(_ln_flag 依赖)",
-    "删除型(删 __syncthreads)",
+    "删除型B(删数值项/因子)",
+    "删除型A(删 __syncthreads)",
     "其他",
 ]
 

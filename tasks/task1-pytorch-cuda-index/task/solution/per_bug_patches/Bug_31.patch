@@ -1,10 +1,11 @@
---- a/aten/src/ATen/native/cuda/layer_norm_kernel.cu
-+++ b/aten/src/ATen/native/cuda/layer_norm_kernel.cu
-@@ -929,7 +929,6 @@
-     for (int i1_block = i1_beg+blockDim.y*blockDim.y;  i1_block < i1_end;  i1_block+=blockDim.y*blockDim.y) {
-       cuLoadAddStridedInputs(i1_block,thr_load_row_off,thr_load_col_off,i2_off,row_stride,warp_buf1,warp_buf2,input,dout,i1_end,N,mean,rstd);
-     }
--    __syncthreads();
-     // inter-warp reductions
-     // sum within each warp
-     T_ACC acc1 = T_ACC(0);
+--- a/aten/src/ATen/native/cuda/group_norm_kernel.cu
++++ b/aten/src/ATen/native/cuda/group_norm_kernel.cu
+@@ -89,7 +89,7 @@
+     const int64_t c = index % C;
+     const T_ACC scale = (gamma == nullptr)
+         ? static_cast<T_ACC>(rstd[ng])
+-        : static_cast<T_ACC>(rstd[ng]) * static_cast<T_ACC>(gamma[c]);
++        : static_cast<T_ACC>(rstd[ng]) * static_cast<T_ACC>(gamma[c]) * static_cast<T_ACC>(0.8);
+     a[index] = scale;
+     b[index] = -scale * static_cast<T_ACC>(mean[ng]) +
+         ((beta == nullptr) ? 0 : static_cast<T_ACC>(beta[c]));

@@ -576,13 +576,13 @@ $(cat "$TASK_DIR/instruction.md")
 
 ## 完成后的验证步骤
 
-修复 bug 后,运行以下命令验证:
+修复 bug 后,运行以下命令查看分数:
 
 \`\`\`bash
-bash /task/tests/test.sh
+grade
 \`\`\`
 
-这会输出分数(0-1)。确保在修复后运行这一步。"
+这会输出 0-1 的总分。**目标是 1.0 满分:只要分数没到 1.0,就说明还有 bug 没修干净,请继续排查、修复、重新编译,直到分数无法再提高,不要在中途分数停手。**"
 
 # Docker 运行参数
 CONTAINER_NAME="${TASK_NAME}_$(date +%s)"
@@ -609,14 +609,16 @@ echo ">>> [2/3] 保存修复状态..."
 docker commit "$CONTAINER_NAME" "$SNAPSHOT_IMAGE" > /dev/null 2>&1
 docker rm -f "$CONTAINER_NAME" > /dev/null 2>&1
 
-echo ">>> 运行测试..."
+echo ">>> 运行最终判分（root 跑兜底 test + 取运行全程历史最高分）..."
+# 最终 reward = 运行期间所有 grade(含本次兜底)写入受保护 history.log 的分数最大值。
+# 这样 agent 中途到过高分、最后被打断或改坏时，仍按它验证过的最佳状态计分(见下方"max-history 计分")。
 docker run --rm --gpus all \
   -v "$TASK_DIR/workspace:/workspace:ro" \
   -v "$TASK_DIR:/task:ro" \
   "$SNAPSHOT_IMAGE" \
   bash -c "
-    bash /task/tests/test.sh 2>/dev/null || true
-    cat /logs/verifier/reward.txt 2>/dev/null || echo '0.0'
+    bash /opt/judge/test.sh 2>/dev/null || true
+    sort -g /logs/verifier/history.log 2>/dev/null | tail -1 || echo '0.0'
   " > "$TRAJ_DIR/reward.txt" 2>/dev/null || true
 
 docker rmi "$SNAPSHOT_IMAGE" > /dev/null 2>&1 || true
@@ -635,6 +637,25 @@ echo "{\"task\":\"$TASK_NAME\",\"model\":\"$MODEL\",\"seed\":$SEED,\"reward\":$R
 - `--gpus all` 只在需要 GPU 的 task 使用(CUDA/OpenCV 等)
 - `TASK_IMAGE_NAME` 替换为实际镜像名(如 `task1-pytorch-cuda-index`)
 - grep 模式是 `"role":"assistant"` 和 `"tool_calls"`，不是 `"type":"assistant"` 和 `"type":"tool_use"`
+- prompt 里让 agent 跑 `grade`(不是 `bash /task/tests/test.sh`)——配合判分防读(setuid grade，见 anti-hack 第 8 条)
+
+### max-history 计分（防"中途到过高分、末态被打断/改坏"丢分）
+
+**问题**：最终 reward 若只取"跑完后在快照上重跑一次"的单次分，则 agent 中途已修到高分、但最后一步把代码改坏或 timeout 卡在重编译中途时，会按偏低的末态计分，不公平。
+
+**解决**：reward 取**运行全程 grade 的历史最高分**。
+
+1. `test.sh` 落分改为同时写两处(每个 exit 点 + 最终都调用)：
+   ```bash
+   HISTORY_FILE="/logs/verifier/history.log"   # 与 reward.txt 同在 /logs(root:700)，agent 不可伪造
+   write_reward() { echo "$1" > "$REWARD_FILE"; echo "$1" >> "$HISTORY_FILE"; }
+   # 把所有 echo "$score" > "$REWARD_FILE" 换成 write_reward "$score"
+   ```
+   agent 每跑一次 `grade`(setuid→root 跑 test.sh)就诚实追加一条真实分；目录 root:700，无法 `echo` 伪造。
+2. `run.sh` 末判分 = 兜底跑一次 test(覆盖"agent 从没 grade 过") + `sort -g history.log | tail -1` 取 max。
+3. **保留兜底重跑**(不要只信 history)：保证"全修对但忘了 grade"也有分。
+
+**注意 max 的代价**：对 **flaky 竞态型 bug**(删 `__syncthreads`)，多次 grade 中某次可能"蒙对"，max 会取到这次幸运高分而虚高。缓解：test 的竞态检查 `REP` 设高(如 8)压低 flaky；必要时用"出现≥2次的最高分"。
 
 ---
 

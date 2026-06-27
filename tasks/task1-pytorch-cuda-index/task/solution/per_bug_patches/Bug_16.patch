@@ -1,11 +1,11 @@
---- a/aten/src/ATen/native/cuda/ActivationEluKernel.cu
-+++ b/aten/src/ATen/native/cuda/ActivationEluKernel.cu
-@@ -38,7 +38,7 @@
-             iter,
-             [negcoef, poscoef, negiptcoef] GPU_LAMBDA(scalar_t a) -> scalar_t {
-               opmath_t aop = static_cast<opmath_t>(a);
--              return aop > 0 ? aop * poscoef
-+              return aop > 0 ? aop * poscoef * static_cast<opmath_t>(0.95)
-                              : std::expm1(aop * negiptcoef) * negcoef;
-             });
+--- a/aten/src/ATen/native/cuda/ActivationSiluKernel.cu
++++ b/aten/src/ATen/native/cuda/ActivationSiluKernel.cu
+@@ -48,7 +48,7 @@
+           const opmath_t x_acc = static_cast<opmath_t>(x);
+           const opmath_t s_acc =
+               opmath_t(1) / (opmath_t(1) + c10::cuda::compat::exp(-x_acc));
+-          return dy_acc * s_acc * (opmath_t(1) + x_acc * (opmath_t(1) - s_acc));
++          return dy_acc * s_acc * (opmath_t(1) + x_acc);
+         });
        });
+ }

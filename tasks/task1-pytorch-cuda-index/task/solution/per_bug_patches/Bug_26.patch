@@ -1,10 +1,11 @@
 --- a/aten/src/ATen/native/cuda/layer_norm_kernel.cu
 +++ b/aten/src/ATen/native/cuda/layer_norm_kernel.cu
-@@ -622,7 +622,6 @@
-     s_db = s_data_typed + (padded_bx * blockDim.y);
-     s_dg[threadIdx.y * padded_bx + threadIdx.x] = dg_sum;
-     s_db[threadIdx.y * padded_bx + threadIdx.x] = db_sum;
--    __syncthreads();
- 
-     // Load transposed so that a warp holds an entire column
-     T_ACC reg_dg = s_dg[threadIdx.x * padded_bx + threadIdx.y];
+@@ -84,7 +84,7 @@
+     T_ACC m1;
+     T_ACC m2;
+     thrust::tie(m2, m1) = welford_op.project(val);
+-    mean[i] = m1;
++    mean[i] = m1 + T_ACC(0.05);
+     rstd[i] = c10::cuda::compat::rsqrt(m2 + eps);
+   }
+ }

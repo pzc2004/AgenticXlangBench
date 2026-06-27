@@ -5,15 +5,25 @@ Task 1: 真 bug 定义 + per-bug patch 生成器。
 BUGS 列表是所有真 bug 的单一事实来源，被 generate_bugs_patch.py 复用。
 每个 bug 在 clean 源码上单独生成一个 per_bug_patches/Bug_N.patch，便于审查。
 
-bug 分类：
-  - 删除型 (Bug 1-6)   : 删 __syncthreads，引入竞争条件
-  - 条件触发型 (Bug 7-17): 符号翻转/偏移/缩放，特定输入下触发
-  - 数值精度型 (Bug 18-22): 微小缩放偏移，不崩溃但影响数值
-  - 跨 kernel 型 (Bug 23-24): 依赖诱饵层的 _ln_flag 符号
-  - Bug 25            : LN backward gamma 缩放
+bug 分类（2026-06-27 重排，详见 memory task1-deletion-bug-duds）：
+  - 删除型A 删 __syncthreads (Bug 1-15) : 全部 NVIDIA 活路径 + 跨 warp，删后竞争/确定性错误。
+      已剔除原 ROCm 哑弹（cuComputePartGradGammaBeta / cuComputeGradInput 路径）与
+      入口被后续 sync 保护的弱锚点；新增 LN compute_stats inter-warp(196/204)、
+      GammaBeta fallback 2nd sync(718)、SoftMax spatial-loop(243) 等活锚点。
+  - 删除型B 删数值项/因子/clamp (Bug 16-24): 确定性错误，test GPU-vs-CPU 必中。
+      分散到激活 backward / LN backward / BatchNorm fwd+bwd / PReLU。
+  - 条件触发型 (Bug 25-34): 符号翻转/偏移/缩放，特定输入触发。
+  - 数值精度型 (Bug 35-39): 微小缩放偏移。
+  - 跨 kernel 型 (Bug 40-41): 依赖诱饵层 _ln_flag。
+  - LN backward gamma 缩放 (Bug 42-43)。
 
-注：原 inject_bug.py 中 Bug 22 / Bug 25 的锚点文本与 2.5.0 源码不符，
-    从未生效；此处已校正锚点。
+关键约束：
+  - 锚点必须在 (clean + decoys) 态存在；generate_bugs_patch.py 应用到 decoys 态时
+    apply_single_bug 会对缺失锚点 raise，是主校验。
+  - apply_single_bug 用 replace(old,new,1) 改首处；GN GammaBeta1d/general Kernel2 的
+    "Write accumulated tile…__syncthreads()…Do warp reduce" 文本完全相同，故 GN 只取
+    240 一处 sync（first match），第二个 GN 删除型走删项型而非 sync。
+  - PReLU / 部分 backward 路径需 test.sh 显式带电才不是哑弹（见 [6/8] kernel 检查）。
 
 用法:
   python3 generate_per_bug_patches.py <clean_source_dir> <output_dir>
@@ -29,96 +39,190 @@ def _cu(name):
 
 # (name, relative_path, old, new)
 BUGS = [
-    # ---------- 删除型：删 __syncthreads ----------
+    # ================================================================
+    # 删除型A：删 __syncthreads（Bug 1-15，全部 NVIDIA 活路径 + 跨 warp）
+    # ================================================================
+    # --- LayerNorm forward: vectorized compute_stats inter-warp 归约（3 处）---
     ("Bug 1", _cu("layer_norm_kernel.cu"),
+     "          countbuf[wrt_y] = wd.count;\n        }\n        __syncthreads();\n        // lower half merges",
+     "          countbuf[wrt_y] = wd.count;\n        }\n        // lower half merges"),
+
+    ("Bug 2", _cu("layer_norm_kernel.cu"),
+     "          wd = cuWelfordCombine(wd, wdB);\n        }\n        __syncthreads();\n      }",
+     "          wd = cuWelfordCombine(wd, wdB);\n        }\n      }"),
+
+    ("Bug 3", _cu("layer_norm_kernel.cu"),
      "      __syncthreads();\n      return WelfordDataLN",
      "      return WelfordDataLN"),
 
-    ("Bug 2", _cu("layer_norm_kernel.cu"),
+    # --- LayerNorm backward dX ---
+    ("Bug 4", _cu("layer_norm_kernel.cu"),
      "    __syncthreads();\n    stats_x1 = buf[0];\n    stats_x2 = buf[1];",
      "    stats_x1 = buf[0];\n    stats_x2 = buf[1];"),
 
-    ("Bug 3", _cu("group_norm_kernel.cu"),
-     "  __syncthreads();\n\n  // Do warp reduce for the 1st 16 cols in the tile.",
-     "\n  // Do warp reduce for the 1st 16 cols in the tile."),
+    ("Bug 5", _cu("layer_norm_kernel.cu"),
+     "    reduce_buf[1] = stats_x2;\n  }\n  __syncthreads();\n  stats_x1 = reduce_buf[0];",
+     "    reduce_buf[1] = stats_x2;\n  }\n  stats_x1 = reduce_buf[0];"),
 
-    ("Bug 4", _cu("SoftMax.cu"),
-     "  __syncthreads();\n\n  shared[threadIdx.x] = val;",
-     "\n  shared[threadIdx.x] = val;"),
+    # --- LayerNorm backward dgamma/dbeta（32x32 + fallback 两处 sync）---
+    ("Bug 6", _cu("layer_norm_kernel.cu"),
+     "    s_db[threadIdx.y * padded_bx + threadIdx.x] = db_sum;\n    __syncthreads();",
+     "    s_db[threadIdx.y * padded_bx + threadIdx.x] = db_sum;"),
 
-    ("Bug 5", _cu("SoftMax.cu"),
+    ("Bug 7", _cu("layer_norm_kernel.cu"),
+     "    s_db[threadIdx.y * blockDim.x + threadIdx.x] = db_sum;\n    __syncthreads();",
+     "    s_db[threadIdx.y * blockDim.x + threadIdx.x] = db_sum;"),
+
+    ("Bug 8", _cu("layer_norm_kernel.cu"),
+     "            s_db[(threadIdx.y + offset) * blockDim.x + threadIdx.x];\n        }\n      __syncthreads();",
+     "            s_db[(threadIdx.y + offset) * blockDim.x + threadIdx.x];\n        }"),
+
+    # --- SoftMax（冷算子：model.py 不可见，仅藏于 CrossEntropy；需大 classes / 4D 才走多 warp）---
+    ("Bug 9", _cu("SoftMax.cu"),
+     "  while (offset > 0) {\n    __syncthreads();\n    if (threadIdx.x < offset)",
+     "  while (offset > 0) {\n    if (threadIdx.x < offset)"),
+
+    ("Bug 10", _cu("SoftMax.cu"),
      "  __syncthreads();\n\n  return shared[0];",
      "\n  return shared[0];"),
 
-    ("Bug 6", _cu("SoftMax.cu"),
-     "  // To avoid RaW races from chaining blockReduce calls together, we need a sync here\n  __syncthreads();",
-     "  // To avoid RaW races from chaining blockReduce calls together, we need a sync here"),
+    ("Bug 11", _cu("SoftMax.cu"),
+     "  smem[threadIdx.x] = val;\n\n  __syncthreads();",
+     "  smem[threadIdx.x] = val;"),
 
-    # ---------- 条件触发型 ----------
-    ("Bug 7", _cu("layer_norm_kernel.cu"),
+    ("Bug 12", _cu("SoftMax.cu"),
+     "  }\n\n  __syncthreads();\n\n  // First thread will perform a reduction",
+     "  }\n\n  // First thread will perform a reduction"),
+
+    ("Bug 13", _cu("SoftMax.cu"),
+     "  // Sync and broadcast\n  __syncthreads();\n  return smem[0];",
+     "  // Sync and broadcast\n  return smem[0];"),
+
+    ("Bug 14", _cu("SoftMax.cu"),
+     "    smem_cache[0] = result;\n  }\n  __syncthreads();\n  return smem_cache[0];",
+     "    smem_cache[0] = result;\n  }\n  return smem_cache[0];"),
+
+    # --- GroupNorm backward dgamma/dbeta（GammaBeta1d/general Kernel2，仅取 first match）---
+    ("Bug 15", _cu("group_norm_kernel.cu"),
+     "  __syncthreads();\n\n  // Do warp reduce for the 1st 16 cols in the tile.",
+     "\n  // Do warp reduce for the 1st 16 cols in the tile."),
+
+    # ================================================================
+    # 删除型B：删数值项/因子/clamp（Bug 16-24，确定性错误，GPU-vs-CPU 必中）
+    # ================================================================
+    # SiLU backward：删 (1 - s) 二阶项
+    ("Bug 16", _cu("ActivationSiluKernel.cu"),
+     "x_acc * (opmath_t(1) - s_acc)",
+     "x_acc"),
+
+    # Hardswish backward：删 + one_half
+    ("Bug 17", _cu("ActivationHardswishKernel.cu"),
+     "return grad_val * ((self_val / three) + one_half);",
+     "return grad_val * ((self_val / three));"),
+
+    # ELU backward：删 * negiptcoef
+    ("Bug 18", _cu("ActivationEluKernel.cu"),
+     "return bop <= 0 ? aop * negiptcoef * (bop + negcoef)",
+     "return bop <= 0 ? aop * (bop + negcoef)"),
+
+    # LeakyReLU backward：删 * negval（负区梯度退化为恒等）
+    ("Bug 19", _cu("ActivationLeakyReluKernel.cu"),
+     "return aop > opmath_t(0) ? bop : bop * negval;",
+     "return aop > opmath_t(0) ? bop : bop;"),
+
+    # GELU(tanh) backward：删 + right_derivative（丢三次项导数）
+    ("Bug 20", _cu("ActivationGeluKernel.cu"),
+     "return static_cast<opmath_t>(dy) * (left_derivative + right_derivative);",
+     "return static_cast<opmath_t>(dy) * (left_derivative);"),
+
+    # LayerNorm backward dX：删 mean 修正项 -= stats_x1
+    ("Bug 21", _cu("layer_norm_kernel.cu"),
+     "        f_grad_input -= stats_x1;\n        f_grad_input *= term1;",
+     "        f_grad_input *= term1;"),
+
+    # BatchNorm(eval) backward：删 * invstd（factor_2 缺失，dgrad 错误）
+    ("Bug 22", _cu("Normalization.cu"),
+     "auto factor_2_c = weight * invstd;",
+     "auto factor_2_c = weight;"),
+
+    # BatchNorm(eval) backward：删 * norm_fct（factor_1 缺失）
+    ("Bug 23", _cu("Normalization.cu"),
+     "auto factor_1_c = invstd * invstd * xmu * norm_fct;",
+     "auto factor_1_c = invstd * invstd * xmu;"),
+
+    # PReLU backward：删 weight（负区 grad_input 退化为恒等）
+    ("Bug 24", _cu("ActivationPreluKernel.cu"),
+     "auto grad_input = mask ? grad : weight * grad;",
+     "auto grad_input = mask ? grad : grad;"),
+
+    # ================================================================
+    # 条件触发型（Bug 25-34）
+    # ================================================================
+    ("Bug 25", _cu("layer_norm_kernel.cu"),
      "T_ACC rstd_val = c10::cuda::compat::rsqrt(wd.sigma2 + eps);",
      "T_ACC rstd_val = (wd.sigma2 > T_ACC(0.5) && wd.sigma2 < T_ACC(2.0)) ? -c10::cuda::compat::rsqrt(wd.sigma2 + eps) : c10::cuda::compat::rsqrt(wd.sigma2 + eps);"),
 
-    ("Bug 8", _cu("layer_norm_kernel.cu"),
+    ("Bug 26", _cu("layer_norm_kernel.cu"),
      "mean[i] = m1;",
      "mean[i] = m1 + T_ACC(0.05);"),
 
-    ("Bug 9", _cu("layer_norm_kernel.cu"),
+    ("Bug 27", _cu("layer_norm_kernel.cu"),
      "const T_ACC rstd_val = rstd[i1];",
      "const T_ACC rstd_val = rstd[i1] * T_ACC(0.95);"),
 
-    ("Bug 10", _cu("layer_norm_kernel.cu"),
+    ("Bug 28", _cu("layer_norm_kernel.cu"),
      "stats_x2 += c_loss * gamma_val * (c_h - mean_val) * rstd_val;",
      "stats_x2 -= c_loss * gamma_val * (c_h - mean_val) * rstd_val;"),
 
-    ("Bug 11", _cu("Normalization.cu"),
+    ("Bug 29", _cu("Normalization.cu"),
      "c10::cuda::compat::rsqrt(var + eps)",
      "c10::cuda::compat::rsqrt(var + eps * static_cast<acc_t>(100))"),
 
-    ("Bug 12", _cu("Normalization.cu"),
+    ("Bug 30", _cu("Normalization.cu"),
      "unbiased_var * momentum + (1 - momentum) * running_var,",
      "unbiased_var / momentum + (1 - momentum) * running_var,"),
 
-    ("Bug 13", _cu("group_norm_kernel.cu"),
+    ("Bug 31", _cu("group_norm_kernel.cu"),
      ": static_cast<T_ACC>(rstd[ng]) * static_cast<T_ACC>(gamma[c]);",
      ": static_cast<T_ACC>(rstd[ng]) * static_cast<T_ACC>(gamma[c]) * static_cast<T_ACC>(0.8);"),
 
-    ("Bug 14", _cu("ActivationSiluKernel.cu"),
+    ("Bug 32", _cu("ActivationSiluKernel.cu"),
      "return x_acc / (opmath_t(1) + ::exp(-x_acc));",
      "return x_acc / (opmath_t(1) + ::exp(-x_acc)) * opmath_t(0.9);"),
 
-    ("Bug 15", _cu("ActivationGeluKernel.cu"),
+    ("Bug 33", _cu("ActivationGeluKernel.cu"),
      "auto inner = kBeta * (static_cast<opmath_t>(x) + kKappa * x_cube);",
      "auto inner = kBeta * (static_cast<opmath_t>(x) + kKappa * x_cube) + opmath_t(0.01);"),
 
-    ("Bug 16", _cu("ActivationEluKernel.cu"),
+    ("Bug 34", _cu("ActivationEluKernel.cu"),
      "return aop > 0 ? aop * poscoef\n                             : std::expm1(aop * negiptcoef) * negcoef;",
      "return aop > 0 ? aop * poscoef * static_cast<opmath_t>(0.95)\n                             : std::expm1(aop * negiptcoef) * negcoef;"),
 
-    ("Bug 17", _cu("ActivationLeakyReluKernel.cu"),
+    # ================================================================
+    # 数值精度型（Bug 35-39）
+    # ================================================================
+    ("Bug 35", _cu("ActivationLeakyReluKernel.cu"),
      "return aop > opmath_t(0) ? aop : aop * negval;",
      "return aop > opmath_t(0) ? aop : aop * negval * static_cast<opmath_t>(0.5);"),
 
-    # ---------- 数值精度型 ----------
-    ("Bug 18", _cu("Dropout.cu"),
+    ("Bug 36", _cu("Dropout.cu"),
      "accscalar_t scale = 1.0 / p;",
      "accscalar_t scale = 0.98 / p;"),
 
-    ("Bug 19", _cu("ActivationGeluKernel.cu"),
+    ("Bug 37", _cu("ActivationGeluKernel.cu"),
      "auto x_cube = static_cast<opmath_t>(x) * static_cast<opmath_t>(x) * static_cast<opmath_t>(x);",
      "auto x_cube = static_cast<opmath_t>(x) * static_cast<opmath_t>(x);"),
 
-    ("Bug 20", _cu("ActivationHardswishKernel.cu"),
+    ("Bug 38", _cu("ActivationHardswishKernel.cu"),
      "return x * std::min(std::max(x + three, zero), six) * one_sixth;",
      "return x * std::min(std::max(x + three, zero), six) * one_sixth * 0.95f;"),
 
-    ("Bug 21", _cu("ActivationPreluKernel.cu"),
+    ("Bug 39", _cu("ActivationPreluKernel.cu"),
      "return (input > 0) ? input : weight * input;",
      "return (input > 0) ? input : static_cast<decltype(input)>(weight * input * 0.95f);"),
 
-    # Bug 22: BN running_var 更新错误（修正锚点：定位 update_stats_and_invert
-    # 的三元组返回，与 Bug 11/12 不冲突）
-    ("Bug 22", _cu("Normalization.cu"),
+    # BN running_var 更新错误（update_stats_and_invert 三元组返回）
+    ("Bug 40", _cu("Normalization.cu"),
      "        return thrust::tuple<scalar_t, scalar_t, acc_t>{\n"
      "          mean * momentum + (1 - momentum) * running_mean,\n"
      "          unbiased_var * momentum + (1 - momentum) * running_var,",
@@ -126,65 +230,23 @@ BUGS = [
      "          mean * momentum + (1 - momentum) * running_mean,\n"
      "          unbiased_var / momentum + (1 - momentum) * running_var,"),
 
-    # ---------- 跨 kernel 型（依赖诱饵层 _ln_flag 声明）----------
-    ("Bug 23", _cu("group_norm_kernel.cu"),
+    # ================================================================
+    # 跨 kernel 型（Bug 41-42，依赖诱饵层 _ln_flag）
+    # ================================================================
+    ("Bug 41", _cu("group_norm_kernel.cu"),
      "b[index] = -scale * static_cast<T_ACC>(mean[ng])",
      "b[index] = -scale * (static_cast<T_ACC>(mean[ng]) + static_cast<T_ACC>(0.1) * static_cast<T_ACC>(_ln_flag))"),
 
-    ("Bug 24", _cu("layer_norm_kernel.cu"),
+    ("Bug 42", _cu("layer_norm_kernel.cu"),
      "rstd[i1] = rstd_val;",
      "rstd[i1] = rstd_val * (_ln_flag ? T_ACC(1) : T_ACC(1)); _ln_flag = (blockIdx.x == 0);"),
 
-    # Bug 25: LN backward gamma 缩放（修正锚点：f_grad_input 首处出现）
-    ("Bug 25", _cu("layer_norm_kernel.cu"),
+    # ================================================================
+    # LN backward gamma 缩放（Bug 43）
+    # ================================================================
+    ("Bug 43", _cu("layer_norm_kernel.cu"),
      "T_ACC f_grad_input = fH * gamma_val * dy;",
      "T_ACC f_grad_input = fH * gamma_val * dy * T_ACC(0.9);"),
-
-    # ============================================================
-    # 删除型扩充 (Bug 26-35): 删除保护 cross-warp shared memory
-    # 归约的 __syncthreads，制造确定性错误 / race。
-    # ============================================================
-    # --- LayerNorm backward 的多处 block reduce 同步 ---
-    ("Bug 26", _cu("layer_norm_kernel.cu"),
-     "    s_db[threadIdx.y * padded_bx + threadIdx.x] = db_sum;\n    __syncthreads();",
-     "    s_db[threadIdx.y * padded_bx + threadIdx.x] = db_sum;"),
-
-    ("Bug 27", _cu("layer_norm_kernel.cu"),
-     "    s_db[threadIdx.y * blockDim.x + threadIdx.x] = db_sum;\n    __syncthreads();",
-     "    s_db[threadIdx.y * blockDim.x + threadIdx.x] = db_sum;"),
-
-    ("Bug 28", _cu("layer_norm_kernel.cu"),
-     "    warp_buf2[threadIdx.y*row_stride+threadIdx.x] = acc2;\n    __syncthreads();",
-     "    warp_buf2[threadIdx.y*row_stride+threadIdx.x] = acc2;"),
-
-    ("Bug 29", _cu("layer_norm_kernel.cu"),
-     "    // prevent race where buf is written again before reads are done\n    __syncthreads();",
-     "    // prevent race where buf is written again before reads are done"),
-
-    ("Bug 30", _cu("layer_norm_kernel.cu"),
-     "    reduce_buf[1] = stats_x2;\n  }\n  __syncthreads();\n  stats_x1 = reduce_buf[0];",
-     "    reduce_buf[1] = stats_x2;\n  }\n  stats_x1 = reduce_buf[0];"),
-
-    ("Bug 31", _cu("layer_norm_kernel.cu"),
-     "    }\n    __syncthreads();\n    // inter-warp reductions",
-     "    }\n    // inter-warp reductions"),
-
-    # --- SoftMax blockReduce / blockReduceWarp 的归约同步 ---
-    ("Bug 32", _cu("SoftMax.cu"),
-     "  smem[threadIdx.x] = val;\n\n  __syncthreads();",
-     "  smem[threadIdx.x] = val;"),
-
-    ("Bug 33", _cu("SoftMax.cu"),
-     "  }\n\n  __syncthreads();\n\n  // First thread will perform a reduction",
-     "  }\n\n  // First thread will perform a reduction"),
-
-    ("Bug 34", _cu("SoftMax.cu"),
-     "  // Sync and broadcast\n  __syncthreads();\n  return smem[0];",
-     "  // Sync and broadcast\n  return smem[0];"),
-
-    ("Bug 35", _cu("SoftMax.cu"),
-     "    smem_cache[0] = result;\n  }\n  __syncthreads();\n  return smem_cache[0];",
-     "    smem_cache[0] = result;\n  }\n  return smem_cache[0];"),
 ]
 
 

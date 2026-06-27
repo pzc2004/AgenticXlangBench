@@ -1,11 +1,11 @@
---- a/aten/src/ATen/native/cuda/group_norm_kernel.cu
-+++ b/aten/src/ATen/native/cuda/group_norm_kernel.cu
-@@ -91,7 +91,7 @@
-         ? static_cast<T_ACC>(rstd[ng])
-         : static_cast<T_ACC>(rstd[ng]) * static_cast<T_ACC>(gamma[c]);
-     a[index] = scale;
--    b[index] = -scale * static_cast<T_ACC>(mean[ng]) +
-+    b[index] = -scale * (static_cast<T_ACC>(mean[ng]) + static_cast<T_ACC>(0.1) * static_cast<T_ACC>(_ln_flag)) +
-         ((beta == nullptr) ? 0 : static_cast<T_ACC>(beta[c]));
-   }
- }
+--- a/aten/src/ATen/native/cuda/Normalization.cu
++++ b/aten/src/ATen/native/cuda/Normalization.cu
+@@ -240,7 +240,7 @@
+       gpu_kernel(iter, [norm_fct] GPU_LAMBDA (scalar_t gO, scalar_t input, accscalar_t weight,
+                                               accscalar_t mean, accscalar_t invstd,
+                                               accscalar_t xmu, accscalar_t dy) -> scalar_t {
+-        auto factor_1_c = invstd * invstd * xmu * norm_fct;
++        auto factor_1_c = invstd * invstd * xmu;
+         auto factor_2_c = weight * invstd;
+         auto m_dy_c = dy * norm_fct;
+         return (gO - m_dy_c - (input - mean) * factor_1_c) * factor_2_c;

@@ -147,9 +147,13 @@ setgid(0); setuid(0);                       // 提权
   config 挂到 `/home/agent/.kimi-code/config.toml`
 - **最终评分镜像必须显式 `--user 0`**(否则 `docker commit` 继承 agent 的 USER=1500，
   非 root 读不到 /opt/judge/test.sh → reward 恒为 0.0，这是个易踩的坑)
+- **max-history 计分**：test.sh 把每次分数追加到 `/logs/verifier/history.log`(与 reward.txt
+  同在 root:700 目录，agent 无法伪造)；run.sh 末取 `sort -g history.log | tail -1` 当 reward，
+  保证 agent 中途到过的最佳状态不被末态打断/改坏拖累。详见 generate-task.md "max-history 计分"。
 
 **instruction.md**： 把 `bash /task/tests/test.sh` 全改为 `grade`，并说明"只返回总分，
-需自己对比 CPU/CUDA 定位"。
+需自己定位"。**注意别在 instruction 里泄露判分方法**(如"逐算子对比 CPU/CUDA""归约用 >1024 维
+触发多 warp""部分 bug 是竞态需重复跑")——这些等于把最难那簇的答案给 agent；只留"冲满分"动机。
 
 **原理 / 安全要点**：
 - bash 脚本无法"可执行不可读"(解释器要读文件)，所以用 setuid 程序代跑

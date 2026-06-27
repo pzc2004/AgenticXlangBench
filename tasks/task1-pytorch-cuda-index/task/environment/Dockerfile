@@ -1,4 +1,4 @@
-# Task 1: PyTorch CUDA 35 真 bug + 60 诱饵（patch 注入）+ 非 root agent + 受保护判分
+# Task 1: PyTorch CUDA 43 真 bug（24 删除型 + 19 条件/数值/跨kernel）+ 60 诱饵（patch 注入）+ 非 root agent + 受保护判分
 FROM pytorch-2.5.0-fat-base
 
 RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
