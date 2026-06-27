@@ -1,4 +1,4 @@
-# Task 1: PyTorch CUDA 复合 Bug → 训练异常
+# Task 1： PyTorch CUDA 复合 Bug → 训练异常
 
 ## 概述
 
@@ -59,7 +59,7 @@
 但仍能用最终测试自测：
 
 - agent 容器以 `--user 1500`（非 root）启动；`/build/pytorch` 与 `torch/lib` chown 给 agent（可改源码/编译）
-- 最终 `test.sh` 锁入 `/opt/judge/`（root:root 0700，agent 读不到）
+- 最终 `test.sh` 锁入 `/opt/judge/`（root：root 0700，agent 读不到）
 - setuid-root 的 `grade`（见 `environment/grade.c`）代跑 `/opt/judge/test.sh`，**丢弃输出、只回显 `score=X.XX`**
 - `/logs/verifier` 仅 root 可访问；instruction 改为引导跑 `grade`
 - **闭环无 gap**：`grade` 跑的就是最终 test 同一份 → 过 grade ⟺ 过最终

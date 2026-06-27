@@ -1,10 +1,10 @@
 # AgenticXlangBench
 
-面向 agentic RL 后训练的跨语言跨抽象层 bug-fix 任务集 —— 底层 bug,上层症状,延迟显现。
+面向 agentic RL 后训练的跨语言跨抽象层 bug-fix 任务集 —— 底层 bug，上层症状，延迟显现。
 
 ## 核心设计
 
-**延迟显现(Delayed Manifestation)**:bug 在底层(C / CUDA / Rust / ASM),症状在上层(Python / SQL / CLI),两者之间跨越多个抽象层和数百个操作。agent 需要从症状反推、穿越语言边界、理解框架内部,才能定位根因。
+**延迟显现(Delayed Manifestation)**：bug 在底层(C / CUDA / Rust / ASM)，症状在上层(Python / SQL / CLI)，两者之间跨越多个抽象层和数百个操作。agent 需要从症状反推、穿越语言边界、理解框架内部，才能定位根因。
 
 ```
 bug 代码执行(CUDA kernel / C++ / Rust)
@@ -39,7 +39,7 @@ bug 代码执行(CUDA kernel / C++ / Rust)
 
 ## 最新进展
 
-### 2026-06-28: Task 4 protected grading 完成，Kimi 0.10
+### 2026-06-28： Task 4 protected grading 完成，Kimi 0.10
 
 **Task 1 (PyTorch CUDA)**:
 - Bug 数量：3 → **25+ 真 bug + 40+ 诱饵**
@@ -48,7 +48,7 @@ bug 代码执行(CUDA kernel / C++ / Rust)
 - Oracle 测试通过：Buggy 0.15, Fixed 1.0
 - Kimi 测试：91 步修完（用"霰弹枪策略"）
 
-**Task 4 (JAX vmap)**:
+**Task 4 (JAX vmap)**：
 - Bug 数量：2 → **26 真 bug + 11 诱饵**（诱饵后续可扩到 30+）
 - 新增删除型 bug（删 early return、条件检查）
 - 新增 AD/Linearize Zero tangent 类 bug（JVP/VJP/linearize 路径触发）
@@ -151,7 +151,7 @@ docker build --no-cache -t task1 \
   -f tasks/task1-pytorch-cuda-index/task/environment/Dockerfile .
 ```
 
-**关键步骤**:
+**关键步骤**：
 1. `COPY inject_bug.py /tmp/` — 复制注入脚本
 2. `RUN python3 /tmp/inject_bug.py` — 注入 bug + 诱饵
 3. `RUN find ... -exec touch {} +` — 统一文件修改时间
@@ -164,7 +164,7 @@ docker build --no-cache -t task1 \
 ./test_oracle.sh task1
 ```
 
-**流程**:
+**流程**：
 ```
 1. 启动 Docker 运行环境 (挂载 workspace/tests/solution)
     ↓
@@ -186,7 +186,7 @@ cd tasks/task1-pytorch-cuda-index
 ./run.sh
 ```
 
-**流程**:
+**流程**：
 ```
 1. 生成 kimi_config.toml (API key + 权限规则)
     ↓
@@ -218,11 +218,11 @@ with open('trajectories/*/trajectory.jsonl') as f:
 "
 ```
 
-**分析要点**:
-- 定位方式: 系统搜索 / 偶然发现 / 提示引导
-- 关键转折: 在哪一步发现了 bug
-- 失败原因: 卡在哪里, 为什么
-- hack 尝试: 有没有尝试绕过约束
+**分析要点**：
+- 定位方式： 系统搜索 / 偶然发现 / 提示引导
+- 关键转折： 在哪一步发现了 bug
+- 失败原因： 卡在哪里， 为什么
+- hack 尝试： 有没有尝试绕过约束
 
 ### Skills 系统
 
@@ -342,7 +342,7 @@ agentic-xlang-bugfix/
 
 ## 反 Reward Hack
 
-每道题的 `tests/test.sh` 包含多层反 hack 检查:
+每道题的 `tests/test.sh` 包含多层反 hack 检查：
 
 | 检查 | 防什么 |
 |---|---|
@@ -356,7 +356,7 @@ agentic-xlang-bugfix/
 
 ## 反 Reward Hack
 
-每道题的 `tests/test.sh` 包含多层反 hack 检查:
+每道题的 `tests/test.sh` 包含多层反 hack 检查：
 
 | 检查 | 防什么 |
 |---|---|
@@ -370,7 +370,7 @@ agentic-xlang-bugfix/
 
 ## 选题策略
 
-设计了 15 道题,校准后**选成功率最接近 50% 的 10 道**:
+设计了 15 道题，校准后**选成功率最接近 50% 的 10 道**：
 
 - 成功率 40-60% → 选入(难度合适)
 - 成功率 >60% → 淘汰或加难度
@@ -378,7 +378,7 @@ agentic-xlang-bugfix/
 
 ## Claude Code Skills
 
-本项目包含 Claude Code skills,用于自动化任务生成和校准:
+本项目包含 Claude Code skills，用于自动化任务生成和校准：
 
 | Skill | 用途 | 用法 |
 |---|---|---|

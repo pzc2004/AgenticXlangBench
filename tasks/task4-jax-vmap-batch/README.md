@@ -1,4 +1,4 @@
-# Task 4: JAX Batching Rule 错误 → vmap+grad 梯度错误
+# Task 4： JAX Batching Rule 错误 → vmap+grad 梯度错误
 
 ## 概述
 

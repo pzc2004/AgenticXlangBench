@@ -6,13 +6,13 @@ Claude Code skills for the AgenticXlangBench project.
 
 生成一道跨语言 bug-fix 评测题。
 
-用法:
+用法：
 ```
 /generate-task --cve CVE-2024-xxxx --framework pytorch
 /generate-task --bug-file kernel.cu --bug-line 246 --bug-desc "rsqrt missing eps"
 ```
 
-包含 9 个 Phase 的完整流程,以及 **Bug 构造策略**:
+包含 9 个 Phase 的完整流程，以及 **Bug 构造策略**：
 - 删除关键代码(最难)
 - 条件触发(次难)
 - 跨函数依赖(较难)
@@ -25,7 +25,7 @@ Claude Code skills for the AgenticXlangBench project.
 
 校准一道评测题的难度。
 
-用法:
+用法：
 ```
 /calibrate-task --task-dir tasks/taskN-xxx --runs 3 --budget 10
 ```
@@ -40,9 +40,9 @@ Claude Code skills for the AgenticXlangBench project.
 
 ## /anti-hack
 
-配置反 hack 措施,防止 agent 绕过调试过程。
+配置反 hack 措施，防止 agent 绕过调试过程。
 
-8 种措施:
+8 种措施：
 1. 禁止上网搜索 (WebSearch/WebFetch deny)
 2. 禁止 git 查看历史 (删除 .git)
 3. 禁止修改 Python 文件 (test.sh 检查)
@@ -56,7 +56,7 @@ Claude Code skills for the AgenticXlangBench project.
 
 ## 参考实现(canonical 样例)
 
-skill 不内置脚本模板,出题时直接引用并 cp 已跑通的真实任务:
+skill 不内置脚本模板，出题时直接引用并 cp 已跑通的真实任务：
 - 编译型/底层(CUDA、C/C++) → `tasks/task1-pytorch-cuda-index/`
 - 纯 Python/JIT(JAX、TF) → `tasks/task4-jax-vmap-batch/`
 

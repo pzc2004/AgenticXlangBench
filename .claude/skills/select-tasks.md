@@ -2,7 +2,7 @@
 
 ## 用途
 
-从校准过的 15 道题里,选出难度最合适(成功率 ~50%)的 10 道,组成最终评测集。
+从校准过的 15 道题里，选出难度最合适(成功率 ~50%)的 10 道，组成最终评测集。
 
 ## 输入
 
@@ -10,14 +10,14 @@
 /select-tasks [--n 15] [--m 10] [--target-success-rate 0.5]
 ```
 
-默认值:
-- n: 15 (总题数)
-- m: 10 (选几道)
+默认值：
+- n： 15 (总题数)
+- m： 10 (选几道)
 - target-success-rate: 0.5 (目标成功率)
 
 ## 执行流程
 
-### Step 1: 收集所有校准结果
+### Step 1： 收集所有校准结果
 
 ```bash
 # 遍历所有任务目录,读取 calibration_results.jsonl
@@ -30,7 +30,7 @@ for task_dir in tasks/task*/; do
 done
 ```
 
-### Step 2: 计算每个任务的统计指标
+### Step 2： 计算每个任务的统计指标
 
 ```python
 import json
@@ -52,7 +52,7 @@ for f in glob.glob('tasks/task*/trajectories/calibration_results.jsonl'):
     })
 ```
 
-### Step 3: 排序并选题
+### Step 3： 排序并选题
 
 ```python
 # 按"距离目标成功率"排序
@@ -64,7 +64,7 @@ selected = tasks[:10]
 rejected = tasks[10:]
 ```
 
-### Step 4: 生成报告
+### Step 4： 生成报告
 
 ```
 === 选题结果 ===
@@ -85,7 +85,7 @@ rejected = tasks[10:]
   目标成功率: 50%
 ```
 
-### Step 5: 复制入选任务到最终目录
+### Step 5： 复制入选任务到最终目录
 
 ```bash
 mkdir -p final-tasks/
@@ -96,8 +96,8 @@ done
 
 ## 输出
 
-- `final-tasks/` 目录:包含入选的 10 道题
-- `selection-report.md`:选题报告(每个任务的 reward、步数、淘汰原因)
+- `final-tasks/` 目录：包含入选的 10 道题
+- `selection-report.md`：选题报告(每个任务的 reward、步数、淘汰原因)
 
 ## 参考
 

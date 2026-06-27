@@ -1,4 +1,4 @@
-# 任务:修复 CPython C 扩展导致的随机 Segfault
+# 任务：修复 CPython C 扩展导致的随机 Segfault
 
 ## 背景
 
@@ -8,35 +8,35 @@
 
 ## Bug 现象
 
-运行测试脚本:
+运行测试脚本：
 
 ```bash
 cd /workspace
 python test_loop.py --iterations 6000
 ```
 
-**预期:** 正常完成所有迭代。
+**预期：** 正常完成所有迭代。
 
-**实际:** 在 ~5000 次迭代后出现 segfault (概率性，不是每次)。
+**实际：** 在 ~5000 次迭代后出现 segfault (概率性，不是每次)。
 
 ## 复现步骤
 
-1. 编译扩展 (如果尚未编译):
+1. 编译扩展 (如果尚未编译)：
    ```bash
    cd /workspace && pip install -e .
    ```
 
-2. 运行短循环测试 (通常能通过):
+2. 运行短循环测试 (通常能通过)：
    ```bash
    python test_loop.py --iterations 1000 --seed 42
    ```
 
-3. 运行长循环测试 (概率性崩溃):
+3. 运行长循环测试 (概率性崩溃)：
    ```bash
    python test_loop.py --iterations 6000 --seed 42
    ```
 
-4. 多次运行以复现:
+4. 多次运行以复现：
    ```bash
    for seed in 1 2 3 4 5; do
        echo "Testing seed=$seed..."
@@ -84,19 +84,19 @@ python test_loop.py --iterations 6000
 
 ## 验收标准
 
-运行 `/task/tests/test.sh`，评分标准:
+运行 `/task/tests/test.sh`，评分标准：
 
-- **0.10 分**: 扩展可以正常导入
-- **0.40 分**: 短循环测试通过 (1000次 × 5 seeds)
-- **0.30 分**: 长循环测试通过 (6000次 × 3 seeds)
-- **0.10 分**: 性能达到纯 Python 的 5 倍以上
-- **0.10 分**: 未使用 hack 手段 (如禁用 GC、修改测试等)
+- **0.10 分**： 扩展可以正常导入
+- **0.40 分**： 短循环测试通过 (1000次 × 5 seeds)
+- **0.30 分**： 长循环测试通过 (6000次 × 3 seeds)
+- **0.10 分**： 性能达到纯 Python 的 5 倍以上
+- **0.10 分**： 未使用 hack 手段 (如禁用 GC、修改测试等)
 
 **总分 ≥ 0.6 视为通过。**
 
 ## 提示
 
-这个 bug 与 Python 的引用计数机制有关。C 扩展在处理 Python 对象时，必须正确管理引用计数，否则会导致:
+这个 bug 与 Python 的引用计数机制有关。C 扩展在处理 Python 对象时，必须正确管理引用计数，否则会导致：
 - 对象过早释放 (use-after-free)
 - 内存泄漏 (引用计数过高)
 - 随机崩溃 (取决于 GC 时机)
