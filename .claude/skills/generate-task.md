@@ -107,11 +107,47 @@ def make_data(batch_size, device):
 - ✅ 看起来像真 bug
 - ❌ 不能是纯注释(太容易排除)
 
-**注入脚本**:写成 `inject_bug.py` / `inject_bug.sh`,包含:
-- 先恢复干净版(防缓存问题)
-- 注入 1-3 个真 bug
-- 注入 15-20 个诱饵
-- 打印注入结果
+**注入方式:统一用 unified diff patch(task1/task4 现行架构)**
+
+不再用 inline 字符串替换(`str.replace`/精确匹配源码)注入,改为 patch 应用/回退。
+`solution/` 目录结构:
+
+```
+solution/
+├── clean_src/                  ← 干净源码(patch 生成的输入,取自 fat-base 镜像)
+├── generate_decoys.py          ← 诱饵定义        → decoys.patch
+├── generate_per_bug_patches.py ← BUGS 单一事实来源 → per_bug_patches/Bug_N.patch
+├── generate_bugs_patch.py      ← (clean+decoys)→+bugs 合成 → bugs.patch
+├── decoys.patch                ← 诱饵层:build 永久应用、solve 不回退
+├── bugs.patch                  ← bug 层:build 应用、solve 回退
+├── per_bug_patches/            ← 每个 bug 一个 patch(供审查 / per-bug oracle)
+├── inject_bug.py               ← 应用/回退 bugs.patch(`--reverse`)
+└── solve.sh                    ← inject_bug.py --reverse + 增量编译
+```
+
+**双层 patch 的关键**:
+- 注入链路:`clean → patch decoys.patch → inject_bug.py(应用 bugs.patch) → 编译`
+- 修复链路:`solve.sh → inject_bug.py --reverse → 增量编译`(只回退 bug,诱饵保留 → 精确等于纯诱饵态)
+- bug 改动全部由 `BUGS` 列表(`generate_per_bug_patches.py`)单一事实来源生成,改 bug 只动这一处
+- **patch 文件 build 时用完即删**(`rm bugs.patch decoys.patch`),agent 读不到 → 替代旧的 `git commit` 隐藏法
+
+> 为什么 patch 优于 inline:锚点由 `clean_src` 真实源码生成,天生对齐,不会出现 inline 时代"模式拼错导致 bug 没注入"的哑改(见教训 15)。
+
+**patch 生成步骤(一次性)**:
+1. **取干净源码**:从 fat-base 镜像把目标文件拷进 `clean_src/`(patch 生成的基线,之后不手动改)。
+2. **写定义**:诱饵写进 `generate_decoys.py`;真 bug 写进 `generate_per_bug_patches.py` 的 `BUGS` 列表(单一事实来源,每条 = 文件 + old 片段 + new 片段)。
+3. **生成三份 patch**:
+   - `generate_decoys.py` → `decoys.patch`
+   - `generate_per_bug_patches.py` → `per_bug_patches/Bug_N.patch`(逐 bug,供审查 / per-bug oracle)
+   - `generate_bugs_patch.py` → 在 **(clean+decoys)** 之上合成 `bugs.patch`(保证 bug 层叠在诱饵层上仍精确可逆)
+4. 之后改 bug/诱饵**只动定义脚本再重新生成**,绝不手编 `.patch`。
+
+**注入校验:三关,缺一不可**(实现于 `inject_bug.py`):
+1. **fuzz=0 精确应用(主防线)**:`patch -p0 -F0 --no-backup-if-mismatch`。`-F0` 禁用模糊匹配,任一 hunk 上下文不精确匹配即 reject + 非 0 退出 → 等于对**全部 hunk** 做精确落地校验。注:`-F0` 只禁 fuzz,仍容忍纯行号偏移,源码小幅变动不会误杀。
+2. **无 `.rej` 残留**:解析 patch 的 `+++` 目标文件,逐个确认没有 `<file>.rej`(双保险)。
+3. **marker 冒烟**:注入后断言几个 buggy 态独有串在、回退后消失。**只作抽样冒烟**——前两关已全检测,且删除型 bug 删完无独有新文本、天生写不出可靠 marker,绝不能把 marker 当主防线。
+
+**往返一致**:`apply → reverse` 后源码必须精确等于纯诱饵态(用 oracle 验证:solve 回退 + 重编译后满分,reverse 后逐字节等于 decoys 态)。
 
 ### Phase 4.5: Bug 构造策略
 
@@ -327,11 +363,14 @@ done
 
 # Dockerfile (增量,较快):
 FROM <base-image>
-COPY inject_bug.py /tmp/
-RUN python /tmp/inject_bug.py && rm /tmp/inject_bug.py
-RUN git add -A && git commit --no-verify  # 隐藏改动
+# 注入用 patch(见 Phase 4 patch 架构):先永久应用诱饵,再应用 bug
+COPY solution/decoys.patch solution/bugs.patch solution/inject_bug.py /tmp/
+RUN patch -d <源码目录> -p0 < /tmp/decoys.patch && \
+    PYTORCH_DIR=<源码目录> BUGS_PATCH=/tmp/bugs.patch python /tmp/inject_bug.py && \
+    rm /tmp/decoys.patch /tmp/bugs.patch /tmp/inject_bug.py   # 用完即删,防 agent 读到
 RUN <编译命令> && <安装命令>
 RUN rm -rf <源码目录>/.git  # 删除 git 历史
+RUN find <源码目录> -name "*.<ext>" -exec touch {} +  # 统一时间戳(防 stat 定位)
 CMD ["/bin/bash"]
 ```
 
@@ -340,6 +379,8 @@ CMD ["/bin/bash"]
 - 用 `--build-arg CACHE_BUST=$(date +%s)` 强制重编
 - API key 运行时注入(`docker run -e` 或 `-v`)
 - **必须删除 .git** 防止 agent 用 git diff/show
+- **patch 文件用完即删** > 旧的 `git commit` 隐藏法;删 patch + 删 .git + touch 时间戳 三件套缺一不可
+- 判分逻辑防读(setuid grade + 非 root agent)见 `anti-hack.md` 第 8 条
 
 ### Phase 8: 验证 + 校准
 
@@ -394,9 +435,51 @@ tasks/taskN-<name>/
     └── tests/      (判题脚本)
 ```
 
-## 参考实现
+## 参考实现(canonical 样例,直接引用不另维护模板)
 
-- Task 1 (PyTorch CUDA): `tasks/task1-pytorch-cuda-index/README.md`
+本 skill **不内置脚本模板**,而是把已被 oracle 实测跑通的真实任务当作单一事实来源。
+出新题时直接 `cp` 对应文件再改少数几处,避免模板副本与真实代码漂移。
+
+**两个 canonical 样例,按框架类型选**:
+- **编译型 / 底层(CUDA、C/C++ 扩展、BLAS)** → `tasks/task1-pytorch-cuda-index/`
+- **纯 Python / JIT(JAX、TF、NumPy)** → `tasks/task4-jax-vmap-batch/`
+
+> ⚠️ 别拿 CUDA 样例去套 Python 题:编译型每改一处要重编译(影响 per-bug oracle 取舍、solve.sh 内容),纯 Python 是秒级迭代。
+
+**一套题的标准交付物**(以 task1 目录为准):
+```
+task/
+├── instruction.md                    ← 任务描述(不泄露 bug,见 Phase 5)
+├── workspace/{train.py, model.py}    ← 用户脚本+封装层(只读挂载,见 Phase 2-3)
+├── tests/test.sh                     ← 判分(分项+带电+HACK,见 Phase 6 / 教训 19)
+├── environment/{Dockerfile, Dockerfile.base, grade.c}  ← 构建+判分防读(Phase 7 / anti-hack 第8条)
+└── solution/
+    ├── clean_src/                    ← 干净源码基线(patch 生成输入)
+    ├── generate_decoys.py            ← 诱饵定义 → decoys.patch
+    ├── generate_per_bug_patches.py   ← BUGS 定义 → per_bug_patches/
+    ├── generate_bugs_patch.py        ← 合成 bugs.patch
+    ├── inject_bug.py                 ← 应用/回退 + 校验三关
+    ├── solve.sh / oracle.sh          ← 修复 / 双向验证
+    └── oracle_per_bug.py             ← 逐 bug 验证(秒级迭代任务才用,见教训 20)
+run.sh / calibrate.sh                 ← 运行 / 校准(模板见下文)
+```
+
+**引用索引:每个环节抄哪个文件、改哪几处**
+
+| 出题环节 | 参考文件(task1) | 移植说明 |
+|---|---|---|
+| patch 注入 + 校验三关 | `solution/inject_bug.py` | **骨架照抄**(fuzz=0/.rej/幂等),只改 `PYTORCH_DIR`、`BUG_MARKERS` 冒烟串 |
+| bug 定义 | `solution/generate_per_bug_patches.py` 的 `BUGS` | **看格式**(文件+old+new 三元组),内容按本题全换 |
+| 诱饵定义 | `solution/generate_decoys.py` | 看四类诱饵写法(ln_flag/陷阱/普通/迷惑),内容全换 |
+| patch 合成 | `solution/generate_bugs_patch.py` | **照抄**(clean+decoys 之上合成,保证可逆) |
+| 修复 + 回退 | `solution/solve.sh` | 改**编译命令**(ninja→对应框架的 build) |
+| oracle 双向验证 | `solution/oracle.sh` | 照抄(buggy<1.0 且 fixed=1.0,见教训 16) |
+| per-bug 验证 | `solution/oracle_per_bug.py` | 仅秒级迭代任务用;编译型跳过(教训 20) |
+| 分项 + 带电 test | `tests/test.sh` | **看结构**(分项给分/带电检查/reward.txt/HACK 减半),检查项按本题重写(教训 19) |
+| 判分防读 | `environment/grade.c` + Dockerfile 层 | 照抄,见 `anti-hack.md` 第 8 条 |
+| 运行 / 校准 | `run.sh` / `calibrate.sh` | 见下文模板,改任务名/镜像名 |
+
+> 维护约定:task1/task4 兼任"活样例",其脚本须保持**通用骨架与任务特有内容(具体 bug 片段)分离清晰**,不要塞实验性改动。
 
 ---
 
@@ -1194,21 +1277,15 @@ RUN rm -rf /build/source/.git /build/source/.gitignore
 RUN find $SOURCE_DIR -name "*.py" -exec touch {} +
 ```
 
-### 教训 15:inject_bug.py 和 solve.sh 的模式必须精确匹配源码
+### 教训 15:patch 注入取代 inline,但有自己的坑
 
-**task1 数据**:inject_bug.py 用 `return (input > 0) ? input : input * negval` 但实际源码是 `return aop > opmath_t(0) ? aop : aop * negval`,导致 bug 没注入。
+**task1 inline 时代数据**:inject_bug.py 用 `return (input > 0) ? input : input * negval` 但实际源码是 `return aop > opmath_t(0) ? aop : aop * negval`,模式拼错导致 bug 没注入——而且**静默失败**(没报错、build 照样过、oracle 才发现)。task1 patch 化时确实查出 Bug22/25 + 5 个陷阱诱饵的锚点从来没匹配上、一直是哑改。
 
-**通用原则**:inject_bug.py 和 solve.sh 的字符串模式必须精确匹配源码,包括变量名、类型、空格。任何不匹配都会导致 bug 没注入或没修复。
-
-**验证方法**:
-```bash
-# 在容器里验证模式是否匹配
-docker run --rm task_image python3 -c "
-with open('/path/to/source.cu') as f: content = f.read()
-old = 'exact pattern here'
-print('Pattern found:', old in content)
-"
-```
+**通用原则**:改用 unified diff patch(见 Phase 4)。锚点由 `clean_src` 真实源码生成,天生对齐,根除"模式拼错"这类哑改。但 patch 有自己的新坑:
+- **patch fuzz / 偏移**:`patch` 默认允许 fuzz(模糊匹配),源码上下文轻微不符时会**静默命中错位置、returncode 仍是 0**。最容易踩的是删除型 bug(上下文只有几行)。**必须 `-F0`(fuzz=0)关闭模糊匹配 + 断言无 `.rej` 残留**——这样任一 hunk 上下文不精确匹配就 reject + 非 0 退出,等于把 patch 引擎变成对**全部 hunk 的精确落地校验**(见教训 17)。
+- **marker 抽样只作冒烟**:注入后用几个 buggy 态独有串(`BUG_MARKERS`)抽查,作冒烟即可,**不能当主防线**——删除型 bug 删完没有独有新文本,天生写不出可靠 marker,主防线只能是 fuzz=0。
+- **陷阱诱饵不能和 bug 改同一行**:诱饵在 bug 之后应用会改变该行文本,导致 `bugs.patch` 反向(solve)失败。诱饵层与 bug 层必须互不重叠。
+- **patch 用完即删**:build 后 `rm *.patch`,否则 agent 直接读 patch 就是答案地图。
 
 ### 教训 16:oracle 测试必须验证 buggy 版本失败
 
@@ -1219,6 +1296,21 @@ print('Pattern found:', old in content)
 2. 测试 fixed 版本 → 分数应该 = 1.0
 
 如果 buggy 版本也得 1.0,说明 test 没有检测到 bug,必须加强 test。
+
+### 教训 17:patch 注入要用 fuzz=0 做全检测,别靠 marker 抽样
+
+**task1 数据**:`inject_bug.py` 原来用 `patch -f`(默认允许 fuzz),只抽 5 个 buggy 独有串作 marker 校验。问题:`patch` 在上下文轻微不符时会**模糊命中错位置、returncode 仍是 0**,而 marker 只覆盖 5/35 个 bug——放过的恰好是 16 个删除型 `__syncthreads` bug(上下文最短、最易 fuzz 错位,又没有独有新文本能写 marker)。
+
+**通用原则**:把"每个 hunk 精确落地"的校验交给 patch 引擎本身,而不是事后抽样:
+```python
+# 主防线:fuzz=0,任一 hunk 上下文不精确匹配即 reject + 非 0 退出
+cmd = ["patch", "-d", SRC, "-p0", "-f", "-F0", "--no-backup-if-mismatch"]
+# 双保险:解析 patch 的 +++ 目标文件,确认无 <file>.rej 残留
+# 冒烟:再抽几个 buggy 独有串断言在/回退后消失(可选)
+```
+- `-F0` 把 35 处 hunk 变成"全员精确匹配才算成功",等价于全检测,且不用维护 marker 列表。
+- `-F0` 只禁 fuzz、仍容忍纯行号偏移 → 源码小改不会误杀。
+- 删除型 bug 删完无独有新文本 → 写不出可靠 marker → 更说明主防线必须是 fuzz=0,marker 只能是冒烟。
 
 ### 教训 18:诱饵必须和真 bug 使用相同模式
 
@@ -1233,6 +1325,38 @@ result *= (1.0 - 0.5 * (sigma2 > 0.99 && sigma2 < 1.01));
 // 诱饵: sigma2 ∈ [0.49, 0.51] 时乘以 0.4 (不同条件,不同参数)
 result *= (1.0 - 0.4 * (sigma2 > 0.49 && sigma2 < 0.51));
 ```
+
+### 教训 19:警惕"哑弹 bug"——注入了但端到端测不出
+
+**task1 数据**:第一次跑 kimi 拿 1.00 满分,却只修了 14/35 个 bug。漏掉的 Softmax/BN/Dropout/GELU bug 全是**哑弹**——bug 确实注入并编译进去了,但默认测试路径根本不触发它们:
+- GELU 默认走 erf 近似,tanh 分支的 bug 不进
+- 模型 `.eval()` 跑,BatchNorm 的 `running_var` 更新、Dropout 缩放都被关掉
+- 没有 4D spatial / 大 dim 的 softmax,`__syncthreads` 删除的竞争条件不暴露
+
+oracle(整体 buggy 失败)能过,是因为别的"带电"bug 把分拉下去了,掩盖了哑弹。
+
+**通用原则**:bug 注入 ≠ bug 生效。每个 bug 必须有一条测试路径真正触发它的代码分支。解决:
+- **kernel/算子级带电检查**:绕过 `.eval()`/默认算子,直接构造能命中该分支的输入(task1 `test.sh` 的 `[6/8] 带电检查`:显式 `approximate='tanh'`、4D `softmax(dim=1)`、`.train()` forward 等),按子项给分。
+- **必要时改用户脚本配合带电**:如 task1 把 `model.py` 两处 `nn.GELU()` 改成 `nn.GELU(approximate='tanh')`,让 GELU bug 端到端也带电。
+
+### 教训 20:per-bug oracle——逐个验证每个 bug 都带电(按成本取舍)
+
+**task4 做法**:`oracle_per_bug.py` 从 clean 态出发,**单独注入每一个 bug → 跑 test → 回退**,要求每个 bug 单独存在时 test 都不满分。这是教训 16(整体 oracle)抓不到的:整体 oracle 只验证"全部 bug 在场时失败",而 per-bug oracle 直接证明"没有哑弹、test 覆盖了每一个 bug"——正是教训 19 的根因检测器。
+
+```python
+# 1. reverse 完整 bugs.patch → clean
+# 2. for each per_bug_patches/Bug_N.patch:
+#      apply 单个 patch → 跑 test(应 <1.0)→ reverse 回 clean
+# 3. 重新 apply 完整 bugs.patch
+```
+
+**按成本取舍(重要)**:per-bug oracle 要为每个 bug 跑一遍 test,**是否值得取决于单个 bug 的迭代成本**:
+- ✅ **适合 task4 这类**:patch 应用 + 跑 python test 是秒级,N 个 bug 全测也就几分钟,直接全覆盖。
+- ❌ **不适合 task1 这类**:每改一个 CUDA bug 都要 `ninja` 增量编译(分钟级),35 个 bug 逐个编译+测试要数小时,代价过高。此时**不必逐个 per-bug oracle**,改用更便宜的等价手段:
+  - 静态断言每处 patch 落地(`BUG_MARKERS`/grep 注入后的特征串),保证没哑改(教训 15);
+  - 用**带电检查按子项给分**(教训 19)间接确认每类 bug 都被触发,而不是逐 bug 重编译。
+
+**判据**:`单 bug 重编译成本 × bug 数` 在可接受范围(≈几分钟) → 上 per-bug oracle;否则退化为"静态落地断言 + 分项带电检查"。
 
 **坏的诱饵**:
 ```c

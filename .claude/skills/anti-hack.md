@@ -110,6 +110,56 @@ RUN find $JAX_DIR -name "*.py" -exec touch {} + 2>/dev/null; \
 
 **注意**: touch 只在 Dockerfile 里做,不要在 inject_bug.py 里重复。Dockerfile 的 touch 同时触发 ninja 重编译。
 
+### 8. 判分逻辑防读（setuid + 非 root agent）
+
+**问题**: 判分脚本 test.sh 以只读挂载给 agent,且 instruction 引导它跑 test.sh。
+agent 直接 `cat test.sh` 把判分清单当"答案地图",照着测试路径反向定位 bug
+(实测: kimi 读到带电检查的 Python 代码,立刻针对性修复了所有被测算子)。
+
+**解决**: agent 以非 root 运行,真 test.sh 锁进 root-only 目录,只通过 setuid
+程序回显**总分**——agent 能用最终测试自测,但读不到判分逻辑。无 smoke/final gap
+(grade 跑的就是最终 test 同一份 → 过 grade ⟺ 过最终)。
+
+**Dockerfile** 关键层:
+```dockerfile
+COPY .../tests/test.sh /opt/judge/test.sh
+COPY .../environment/grade.c /tmp/grade.c
+RUN useradd -m -u 1500 agent && \
+    cp -r /root/.kimi-code /opt/kimi-code && chmod -R a+rX /opt/kimi-code && \
+    mkdir -p /home/agent/.kimi-code && chown -R agent:agent /home/agent && \
+    chown -R root:root /opt/judge && chmod 700 /opt/judge && \
+    gcc -O2 -o /usr/local/bin/grade /tmp/grade.c && chmod 4755 /usr/local/bin/grade && \
+    mkdir -p /logs/verifier && chown -R root:root /logs && chmod 700 /logs/verifier && \
+    chown -R agent:agent /build/pytorch /usr/local/lib/python3.12/dist-packages/torch/lib
+ENV PATH="/opt/kimi-code/bin:$PATH"
+```
+
+**grade.c** (setuid-root,只回显总分,丢弃 test.sh 输出防泄漏分项):
+```c
+setgid(0); setuid(0);                       // 提权
+// fork 子进程: dup2 /dev/null 到 stdout/stderr, execle 固定 PATH 跑 /opt/judge/test.sh
+// 读 /logs/verifier/reward.txt, 只 printf("score=%s\n", ...)
+```
+编译: `gcc -O2 -o /usr/local/bin/grade grade.c && chmod 4755 /usr/local/bin/grade`
+
+**run.sh** 配套改动:
+- agent 容器: `docker run --user 1500 -e HOME=/home/agent`,**去掉 tests 挂载**,
+  config 挂到 `/home/agent/.kimi-code/config.toml`
+- **最终评分容器必须显式 `--user 0`**(否则 `docker commit` 继承 agent 的 USER=1500,
+  非 root 读不到 /opt/judge/test.sh → reward 恒为 0.0,这是个易踩的坑)
+
+**instruction.md**: 把 `bash /task/tests/test.sh` 全改为 `grade`,并说明"只返回总分,
+需自己对比 CPU/CUDA 定位"。
+
+**原理 / 安全要点**:
+- bash 脚本无法"可执行不可读"(解释器要读文件),所以用 setuid 程序代跑
+- setuid 进程 dumpable=0,同 uid 的 agent 无法 ptrace 或读其 fd
+- grade.c 用 execle 固定 PATH/HOME,杜绝环境变量劫持 bash/python
+- model.py/train.py 仍 workspace **只读挂载** + agent 非 root → 物理改不了,
+  "禁改 model"自动强制,判分用原文件即可、无需副本,也堵死"借判分进程提权读答案"
+- 局限: 对强模型只提高成本不质变(kimi 仍靠端到端对比逼近满分),需配合 bug 本身
+  的不可逆/需深推理才能真正拉开难度
+
 ## 应用方法
 
 1. 修改 `tasks/taskN-xxx/run.sh` 添加权限规则

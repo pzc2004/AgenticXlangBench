@@ -22,6 +22,16 @@ docker images task1 --format '{{.ID}}'
 cat .secrets/kimi_api_key | head -c 10
 ```
 
+### Step 1.5: oracle 预检(跑 agent 前必做)
+
+校准前先确认 test.sh 给分可信(详见 generate-task.md 教训 16):
+1. **整体 oracle**:buggy 态分数 <1.0,solve 后 =1.0。
+2. **per-bug oracle(按成本取舍)**:逐个单独注入每个 bug 跑 test,要求每个都 <1.0
+   → 证明没有"哑弹 bug"(注入了但端到端测不到,见 generate-task.md 教训 19/20)。
+   - ✅ 单 bug 迭代是秒级(如 task4 纯 python):直接全覆盖,用 `oracle_per_bug.py`。
+   - ❌ 单 bug 要重编译(如 task1 每个 CUDA bug 都 `ninja`,N 个要数小时):**跳过逐个 per-bug**,
+     改用"静态断言每处 patch 落地 + test 分项带电检查"间接保证覆盖。
+
 ### Step 2: 运行校准
 
 ```bash

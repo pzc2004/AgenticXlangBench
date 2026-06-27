@@ -15,6 +15,7 @@ TASK_DIR="$SCRIPT_DIR/task"
 RUN_ID="$(date +%Y%m%d_%H%M%S)_${MODEL_SAFE}_seed${SEED}"
 TRAJ_DIR="$SCRIPT_DIR/trajectories/$RUN_ID"
 mkdir -p "$TRAJ_DIR"
+chmod 777 "$TRAJ_DIR"  # 容器内 agent(uid 1500) 可能写 /trajectories
 
 TASK_NAME="$(basename "$SCRIPT_DIR")"
 
@@ -92,6 +93,7 @@ echo ""
 echo ">>> [1/3] 启动 Kimi Code (超时 ${TIMEOUT}s)..."
 timeout "$TIMEOUT" \
 docker run --name $CONTAINER_NAME --gpus all \
+  --user 1500 -e HOME=/home/agent \
   --add-host="github.com:127.0.0.1" \
   --add-host="raw.githubusercontent.com:127.0.0.1" \
   --add-host="codeload.github.com:127.0.0.1" \
@@ -99,10 +101,9 @@ docker run --name $CONTAINER_NAME --gpus all \
   --add-host="pypi.org:127.0.0.1" \
   --add-host="files.pythonhosted.org:127.0.0.1" \
   -v "$TASK_DIR/workspace:/workspace:ro" \
-  -v "$TASK_DIR/tests:/task/tests:ro" \
   -v "$TASK_DIR/instruction.md:/task/instruction.md:ro" \
   -v "$TRAJ_DIR:/trajectories" \
-  -v "$KIMI_CONFIG:/root/.kimi-code/config.toml:ro" \
+  -v "$KIMI_CONFIG:/home/agent/.kimi-code/config.toml:ro" \
   -e "ANTHROPIC_API_KEY=$ANTHROPIC_KEY" \
   task1 \
   kimi -p "$TASK_PROMPT" \
@@ -115,13 +116,12 @@ echo ">>> [2/3] Kimi Code 结束,保存修复状态..."
 docker commit "$CONTAINER_NAME" "$SNAPSHOT_IMAGE" > /dev/null 2>&1
 docker rm -f "$CONTAINER_NAME" > /dev/null 2>&1
 
-echo ">>> 运行测试..."
-docker run --rm --gpus all \
+echo ">>> 运行测试（受保护的最终判分，root 跑镜像内 /opt/judge/test.sh）..."
+docker run --rm --gpus all --user 0 \
   -v "$TASK_DIR/workspace:/workspace:ro" \
-  -v "$TASK_DIR/tests:/task/tests:ro" \
   "$SNAPSHOT_IMAGE" \
   bash -c "
-    bash /task/tests/test.sh 2>/dev/null || true
+    bash /opt/judge/test.sh 2>/dev/null || true
     cat /logs/verifier/reward.txt 2>/dev/null || echo '0.0'
   " > "$TRAJ_DIR/reward.txt" 2>/dev/null || true
 

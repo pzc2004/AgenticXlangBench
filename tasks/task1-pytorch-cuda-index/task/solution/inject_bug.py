@@ -16,7 +16,10 @@ REVERSE = "--reverse" in sys.argv
 
 CUDA_REL = "aten/src/ATen/native/cuda"
 
-# bug 存在性标记：(相对 PYTORCH_DIR 的路径, buggy 态独有文本)
+# bug 存在性冒烟抽查：(相对 PYTORCH_DIR 的路径, buggy 态独有文本)
+# 注意：全部 hunk 的精确落地由 run_patch 的 fuzz=0 + 无 .rej 保证（主防线）；
+# 这里只抽查几个"有独有新文本"的 bug 作冒烟。删除型 bug 删完无独有新文本，
+# 天生写不出可靠 marker，正因如此不能把 marker 当主防线。
 BUG_MARKERS = [
     (f"{CUDA_REL}/layer_norm_kernel.cu", "mean[i] = m1 + T_ACC(0.05);"),          # Bug 8
     (f"{CUDA_REL}/Normalization.cu", "rsqrt(var + eps * static_cast<acc_t>(100))"),  # Bug 11
@@ -59,16 +62,32 @@ def run_patch(reverse=False):
         print("  ⚠️ bug 已回退，跳过")
         return
 
-    cmd = ["patch", "-d", PYTORCH_DIR, "-p0", "-f", "--no-backup-if-mismatch"]
+    cmd = ["patch", "-d", PYTORCH_DIR, "-p0", "-f", "-F0", "--no-backup-if-mismatch"]
     if reverse:
         cmd.append("-R")
     with open(PATCH_FILE, "rb") as f:
         result = subprocess.run(cmd, stdin=f, capture_output=True)
-    if result.returncode != 0:
-        print("STDOUT:", result.stdout.decode(errors="replace"))
-        print("STDERR:", result.stderr.decode(errors="replace"))
-        raise RuntimeError(f"patch 失败，返回码 {result.returncode}")
-    print(f"  ✅ {'回退' if reverse else '应用'} patch 于 {PYTORCH_DIR}")
+    out = result.stdout.decode(errors="replace")
+    err = result.stderr.decode(errors="replace")
+    # -F0 = fuzz 0：任一 hunk 上下文不精确匹配即 reject + 非 0 退出。
+    # 这把"patch 引擎"变成对全部 hunk 的精确落地校验，不再依赖 marker 抽样。
+    if result.returncode != 0 or "FAILED" in out or "saving rejects" in out:
+        print("STDOUT:", out)
+        print("STDERR:", err)
+        raise RuntimeError(
+            f"patch 失败（returncode={result.returncode}）：有 hunk 未精确匹配（fuzz=0）"
+        )
+    # 双保险：解析 patch 涉及的目标文件，确认无 .rej 残留
+    rejects = []
+    for line in open(PATCH_FILE, encoding="utf-8", errors="replace"):
+        if line.startswith("+++ "):
+            rel = line[4:].split("\t", 1)[0].strip()
+            rej = os.path.join(PYTORCH_DIR, rel + ".rej")
+            if os.path.exists(rej):
+                rejects.append(rej)
+    if rejects:
+        raise RuntimeError(f"patch 残留 reject 文件（注入未精确落地）: {rejects}")
+    print(f"  ✅ {'回退' if reverse else '应用'} patch 于 {PYTORCH_DIR}（fuzz=0，无 reject）")
 
 
 def main():

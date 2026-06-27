@@ -52,6 +52,24 @@
 
 `model.py` 同步把两处 `nn.GELU()` 改为 `nn.GELU(approximate='tanh')`，使 GELU bug 端到端也带电。
 
+## 反 hack：判分逻辑防读（setuid + 非 root agent）
+
+判分脚本若以只读挂载给 agent，agent 会 `cat test.sh` 把判分清单当"答案地图"反向修 bug
+（实测 kimi 读到带电检查代码后立刻针对性修复了所有被测算子）。本任务让 agent 读不到判分逻辑，
+但仍能用最终测试自测：
+
+- agent 容器以 `--user 1500`（非 root）启动；`/build/pytorch` 与 `torch/lib` chown 给 agent（可改源码/编译）
+- 最终 `test.sh` 锁入 `/opt/judge/`（root:root 0700，agent 读不到）
+- setuid-root 的 `grade`（见 `environment/grade.c`）代跑 `/opt/judge/test.sh`，**丢弃输出、只回显 `score=X.XX`**
+- `/logs/verifier` 仅 root 可访问；instruction 改为引导跑 `grade`
+- **闭环无 gap**：`grade` 跑的就是最终 test 同一份 → 过 grade ⟺ 过最终
+
+> 易踩坑：`docker commit` 会继承 agent 容器的 `--user 1500`，故 run.sh 的**最终评分容器必须显式 `--user 0`**，
+> 否则非 root 读不到 `/opt/judge/test.sh`，reward 恒为 0.0。
+
+> `model.py`/`train.py` 仍是 workspace **只读挂载** + agent 非 root → 物理改不了，"禁止修改 model" 自动强制，
+> 判分用原文件即可、无需副本。详见 `.claude/skills/anti-hack.md` 第 8 条。
+
 ## 注入方式：unified diff patch（与 task4 一致）
 
 bug 与诱饵以 patch 形式存储，注入/修复均为 `patch` 应用/回退：

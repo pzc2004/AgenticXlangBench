@@ -36,11 +36,13 @@ python train.py --steps 100 --seed 42 --device cuda --eval_fixed_data
    ninja -j32 lib/libtorch_cuda.so
    cp lib/libtorch_cuda.so /usr/local/lib/python3.12/dist-packages/torch/lib/
    ```
-5. **验证修复**:运行测试确认修复成功
+5. **验证修复**:运行评分命令查看当前分数
    ```bash
-   bash /task/tests/test.sh
+   grade
    ```
-6. **检查分数**:测试会输出 0-1 的分数。**分数 ≥ 0.6 才算通过。如果分数 < 0.6,说明修复不正确,请继续排查。**
+   输出形如 `score=0.83`(0-1 的总分)。
+6. **检查分数**:**分数 ≥ 0.6 才算通过。如果分数 < 0.6,说明修复不正确,请继续排查。**
+   评分只返回总分,不会告诉你哪一项未通过——你需要自己通过对比 CPU/CUDA 输出来定位问题。
 
 ## 约束条件
 
@@ -57,8 +59,8 @@ python train.py --steps 100 --seed 42 --device cuda --eval_fixed_data
 ## 文件说明
 
 - `/workspace/train.py` — 训练脚本(支持 `--eval_fixed_data` 用固定数据训练)
-- `/workspace/model.py` — 模型定义
-- `/task/tests/test.sh` — 测试脚本(跑完后输出 0-1 分数)
+- `/workspace/model.py` — 模型定义(**只读,不可修改**)
+- `grade` — 评分命令(运行后输出 0-1 总分)
 - `/build/pytorch/` — PyTorch 源码
 
 ## 运行环境
@@ -69,5 +71,5 @@ python train.py --steps 100 --seed 42 --device cuda --eval_fixed_data
 
 ## 验收标准
 
-运行 `/task/tests/test.sh`,分数 ≥ 0.6 视为通过。
+运行 `grade`,分数 ≥ 0.6 视为通过。
 **如果分数 < 0.6,说明修复不正确,请继续排查 CUDA 源码。**
