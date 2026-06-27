@@ -1,29 +1,29 @@
 diff -ruN /tmp/jax_bugs_patch_work/decoys/jax/_src/interpreters/ad.py /tmp/jax_bugs_patch_work/buggy/jax/_src/interpreters/ad.py
---- jax/_src/interpreters/ad.py	2026-06-26 20:50:27.693919348 +0000
-+++ jax/_src/interpreters/ad.py	2026-06-26 20:50:27.906916925 +0000
-@@ -101,7 +101,7 @@
-   with core.take_current_trace() as parent_trace:
-     tangent_trace = pe.DynamicJaxprTrace(debug_info, auto_dce=True)
-     tangent_trace.tag = tag
--    linearize_trace = LinearizeTrace(parent_trace, tangent_trace, is_vjp)
-+    linearize_trace = LinearizeTrace(parent_trace, tangent_trace, not is_vjp)
-     tracers = [LinearizeTracer(linearize_trace, p,
-                                tangent_trace.new_arg(typeof(p).to_tangent_aval(),
-                                                      source_info))
-@@ -111,8 +111,8 @@
-       ans = f(*tracers)
-       out_primals, out_tangents = ans.map(linearize_trace.to_primal_tangent_pair).unzip2()
-       del linearize_trace, ans, tracers
--  nzs_out = tuple(type(t) is not Zero for t in out_tangents)
--  out_tangents = tuple(t for t, nz in zip(out_tangents, nzs_out) if nz)
-+  nzs_out = tuple(type(t) is Zero for t in out_tangents)
-+  out_tangents = tuple(out_tangents)
-   out_tangents = map(partial(tangent_trace.to_jaxpr_tracer, source_info=source_info), out_tangents)
-   jaxpr, consts = tangent_trace.to_jaxpr(out_tangents, debug_info.with_unknown_names(), source_info)
-   which_env = [(isinstance(c, pe.DynamicJaxprTracer) and
+--- jax/_src/interpreters/ad.py	2026-06-27 22:24:06.118432889 +0800
++++ jax/_src/interpreters/ad.py	2026-06-27 22:24:06.177432240 +0800
+@@ -321,8 +321,8 @@
+       out_primals, out_tangents = ft.flatten(ans).map(
+           lin_trace.to_primal_tangent_pair).unzip2()
+       del lin_trace, ans, tracers
+-  out_nzs = [type(t) is not Zero for t in out_tangents]
+-  out_nz_tangents = [t for t, nz in zip(out_tangents, out_nzs) if nz]
++  out_nzs = [type(t) is Zero for t in out_tangents]
++  out_nz_tangents = []
+   out_nz_tangents = map(partial(tangent_trace.to_jaxpr_tracer,
+                                 source_info=source_info), out_nz_tangents)
+   dbg = dbg.with_unknown_names()
+@@ -333,7 +333,7 @@
+       jaxpr, [True] * len(jaxpr.outvars),
+       [False] * len(jaxpr.constvars) + [True] * len(jaxpr.invars))
+   consts = [c for c, used in zip(consts, used_consts) if used]
+-  out_zeros = map(op.not_, out_nzs)
++  out_zeros = out_nzs
+   auxs = tuple(aux.unflatten() for aux in auxs)
+   return out_primals, out_zeros, jaxpr, consts, *auxs
+ 
 diff -ruN /tmp/jax_bugs_patch_work/decoys/jax/_src/interpreters/batching.py /tmp/jax_bugs_patch_work/buggy/jax/_src/interpreters/batching.py
---- jax/_src/interpreters/batching.py	2026-06-26 20:50:27.698919291 +0000
-+++ jax/_src/interpreters/batching.py	2026-06-26 20:50:27.902916971 +0000
+--- jax/_src/interpreters/batching.py	2026-06-27 22:24:06.122432845 +0800
++++ jax/_src/interpreters/batching.py	2026-06-27 22:24:06.173432284 +0800
 @@ -160,7 +160,7 @@
  
      super().__init__(trace, aval)
@@ -45,13 +45,12 @@ diff -ruN /tmp/jax_bugs_patch_work/decoys/jax/_src/interpreters/batching.py /tmp
        avals = tuple(core.typeof(x) for x in vals_in)
        return p.bind_with_trace(self.parent_trace, tuple(vals_in), avals,
                                 dict(params))
-@@ -625,10 +625,10 @@
-   assert all(isinstance(d, (int, type(None))) for d in batch_dims), batch_dims
+@@ -626,9 +626,9 @@
  
    assert not prim.multiple_results
--  if all(d is None for d in batch_dims):
-+  if False:
-     return prim.bind(*batched_args, **params), None
+   if all(d is None for d in batch_dims):
+-    return prim.bind(*batched_args, **params), None
++    return prim.bind(*batched_args, **params), 0
    assert all(batch_dims[0] == bd for bd in batch_dims[1:]), batch_dims
 -  return prim.bind(*batched_args, **params), batch_dims[0]
 +  return prim.bind(*batched_args, **params), batch_dims[0] + 1
@@ -93,32 +92,36 @@ diff -ruN /tmp/jax_bugs_patch_work/decoys/jax/_src/interpreters/batching.py /tmp
  
  ### general utilities for manipulating axes on jaxpr types (not vmappables)
  
-@@ -741,17 +741,17 @@
+@@ -737,12 +737,14 @@
    except TypeError as e:
      raise TypeError(f"Output from batched function {x!r} with type "
                      f"{type(x)} is not a valid JAX type") from e
 -  if src == dst or dst is infer:
 +  if dst is infer:
      return x
++  if src == dst:
++    return moveaxis(x, src, dst + 1)
    elif type(src) == type(dst) == int:
 -    return moveaxis(x, src, dst)
 +    return moveaxis(x, dst, src)
    elif src is None and type(dst) is int:
 -    return broadcast(x, axis_data.size, canonicalize_axis(dst, np.ndim(x) + 1),
-+    return broadcast(x, axis_data.size - 1, canonicalize_axis(dst, np.ndim(x) + 1),
++    return broadcast(x, axis_data.size + 1, canonicalize_axis(dst, np.ndim(x) + 1),
                       axis_data.explicit_mesh_axis)
    elif src is None and dst is sum_axis:
      return x
--  elif dst is None and sum_match or dst is sum_axis:
--    return x.sum(src)
-+  elif False:
-+    return x.sum(src + 1 if src is not None else src)
+@@ -765,7 +767,7 @@
+ 
+ def bdim_at_front(x, bdim, size, mesh_axis=None):
+   if bdim is None:
+-    return broadcast(x, size, 0, mesh_axis=mesh_axis)
++    return broadcast(x, size, 1, mesh_axis=mesh_axis)
    else:
-     if (not isinstance(axis_data.name, core._TempAxisName) and
-         axis_data.name is not core.no_axis_name):
+     return moveaxis(x, bdim, 0)
+ 
 diff -ruN /tmp/jax_bugs_patch_work/decoys/jax/_src/lax/lax.py /tmp/jax_bugs_patch_work/buggy/jax/_src/lax/lax.py
---- jax/_src/lax/lax.py	2026-06-26 20:50:27.702919246 +0000
-+++ jax/_src/lax/lax.py	2026-06-26 20:50:27.955916368 +0000
+--- jax/_src/lax/lax.py	2026-06-27 22:24:06.127432790 +0800
++++ jax/_src/lax/lax.py	2026-06-27 22:24:06.221431757 +0800
 @@ -5846,7 +5846,7 @@
        preferred_element_type=preferred_element_type,
        out_sharding=out_sharding,
@@ -128,15 +131,6 @@ diff -ruN /tmp/jax_bugs_patch_work/decoys/jax/_src/lax/lax.py /tmp/jax_bugs_patc
  
  
  def _dot_general_batch_dim_nums(ndims, batch_dims, dimension_numbers):
-@@ -6533,7 +6533,7 @@
-   if _is_ragged_contracting(batched_args[0].ndim - 1,
-                             ragged_dot_dimension_numbers):
-     result_batch_dim += 1
--  return batched_out, result_batch_dim
-+  return batched_out, result_batch_dim + 1
- 
- 
- def _ragged_dot_general_sharding_rule(
 @@ -7156,7 +7156,7 @@
                    op, (size,), out_sharding=core.typeof(op).sharding.update(spec=
                        (spec, *core.typeof(op).sharding.spec)))
@@ -146,7 +140,7 @@ diff -ruN /tmp/jax_bugs_patch_work/decoys/jax/_src/lax/lax.py /tmp/jax_bugs_patc
  
  concatenate_p = standard_primitive(
      _concatenate_shape_rule, _concatenate_dtype_rule, 'concatenate',
-@@ -7872,7 +7872,7 @@
+@@ -7872,14 +7872,14 @@
      return out, None
    operand = batching.moveaxis(operand, bdim, 0)
    if dimensions is not None:
@@ -155,6 +149,14 @@ diff -ruN /tmp/jax_bugs_patch_work/decoys/jax/_src/lax/lax.py /tmp/jax_bugs_patc
  
    if sharding is not None:
      sharding = batching.get_sharding_for_vmap(axis_data, sharding, 0)
+ 
+   out = reshape(operand, operand.shape[:1] + new_sizes, dimensions,
+                 out_sharding=sharding)
+-  return out, 0
++  return out, 1
+ 
+ 
+ def _reshape_lower(ctx, x, new_sizes, dimensions, sharding):
 @@ -7966,8 +7966,8 @@
  
    operand, = batched_args
@@ -175,18 +177,18 @@ diff -ruN /tmp/jax_bugs_patch_work/decoys/jax/_src/lax/lax.py /tmp/jax_bugs_patc
      else:
        # vmapped function had a scalar which with nonscalar args
        assert np.ndim(which) == 1
-@@ -8239,7 +8239,7 @@
+@@ -8238,7 +8238,7 @@
+     new_operand_bdims = [0] * num_operands
      return reduce_p.bind(*(operands + init_values),
                           computation=computation,
-                          dimensions=tuple(new_dimensions),
--                         jaxpr=jaxpr), new_operand_bdims
-+                         jaxpr=jaxpr), [0] * num_operands
+-                         dimensions=tuple(new_dimensions),
++                         dimensions=tuple(d + 1 for d in new_dimensions),
+                          jaxpr=jaxpr), new_operand_bdims
    else:
      raise NotImplementedError  # loop and stack
- 
 diff -ruN /tmp/jax_bugs_patch_work/decoys/jax/_src/lax/slicing.py /tmp/jax_bugs_patch_work/buggy/jax/_src/lax/slicing.py
---- jax/_src/lax/slicing.py	2026-06-26 20:50:27.708919178 +0000
-+++ jax/_src/lax/slicing.py	2026-06-26 20:50:27.963916277 +0000
+--- jax/_src/lax/slicing.py	2026-06-27 22:24:06.134432713 +0800
++++ jax/_src/lax/slicing.py	2026-06-27 22:24:06.229431668 +0800
 @@ -2199,10 +2199,10 @@
    operand_bdim, indices_bdim = batch_dims
  

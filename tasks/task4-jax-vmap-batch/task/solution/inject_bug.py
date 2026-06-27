@@ -14,16 +14,17 @@ try:
 except ImportError:
     JAX_PKG = "/build/jax"
 
-PATCH_FILE = "/task/solution/bugs.patch"
+PATCH_FILE = os.environ.get("BUGS_PATCH", "/task/solution/bugs.patch")
 
 REVERSE = "--reverse" in sys.argv
 
-# Known bug markers used to verify patch state (relative to JAX_PKG).
+# Smoke-check markers (relative to JAX_PKG). NOT the main defense:
+# exact landing of ALL hunks is guaranteed by run_patch's fuzz=0 + no-.rej.
+# These just sample a few bugs that have a unique buggy-state string.
 BUG_MARKERS = [
     ("_src/interpreters/batching.py", "batch_dims[0] + 1"),
     ("_src/interpreters/batching.py", "return (out, (1,) * len(out)) if prim.multiple_results else (out, 1)"),
-    ("_src/interpreters/ad.py", "tuple(type(t) is Zero for t in out_tangents)"),
-    ("_src/lax/lax.py", "result_batch_dim + 1"),
+    ("_src/interpreters/ad.py", "out_nzs = [type(t) is Zero for t in out_tangents]"),    ("_src/lax/lax.py", "result_batch_dim + 1"),
     ("_src/lax/slicing.py", "operand_bdim + 1, 0"),
 ]
 
@@ -73,7 +74,7 @@ def run_patch(reverse=False):
     # JAX_PKG is e.g. /build/jax/jax; patch paths are relative to /build/jax
     patch_base = os.path.dirname(JAX_PKG)
 
-    cmd = ["patch", "-d", patch_base, "-p0", "-f", "--no-backup-if-mismatch"]
+    cmd = ["patch", "-d", patch_base, "-p0", "-f", "-F0", "--no-backup-if-mismatch"]
     if reverse:
         cmd.append("-R")
 
@@ -83,12 +84,28 @@ def run_patch(reverse=False):
     stdout = result.stdout.decode(errors="replace")
     stderr = result.stderr.decode(errors="replace")
 
-    if result.returncode != 0:
+    # -F0 = fuzz 0: any hunk whose context doesn't match exactly -> reject + nonzero.
+    # This turns `patch` itself into an exact-landing check over ALL hunks,
+    # instead of relying on the BUG_MARKERS sample.
+    if result.returncode != 0 or "FAILED" in stdout or "saving rejects" in stdout:
         print("STDOUT:", stdout)
         print("STDERR:", stderr)
-        raise RuntimeError(f"patch failed with code {result.returncode}")
+        raise RuntimeError(
+            f"patch failed (code {result.returncode}): a hunk did not match exactly (fuzz=0)"
+        )
 
-    print(f"  ✅ {'Reversed' if reverse else 'Applied'} patch at {patch_base}")
+    # Double-check: no .rej residue for any target file in the patch.
+    rejects = []
+    for line in open(PATCH_FILE, encoding="utf-8", errors="replace"):
+        if line.startswith("+++ "):
+            rel = line[4:].split("\t", 1)[0].strip()
+            rej = os.path.join(patch_base, rel + ".rej")
+            if os.path.exists(rej):
+                rejects.append(rej)
+    if rejects:
+        raise RuntimeError(f"patch left reject files (injection not exact): {rejects}")
+
+    print(f"  ✅ {'Reversed' if reverse else 'Applied'} patch at {patch_base} (fuzz=0, no reject)")
 
 
 def clear_pycache():

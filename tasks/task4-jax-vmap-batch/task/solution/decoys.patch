@@ -69,17 +69,6 @@ diff -ruN /tmp/task4_patch_root/clean/jax/_src/interpreters/batching.py /workspa
    if all(d is None for d in batch_dims):
      return prim.bind(*batched_args, axes=axes, **params), None
    def out_axis(axes, axis):
-@@ -716,6 +732,10 @@
-   return args
- 
- def matchaxis(axis_data, src, dst, x, sum_match=False):
-+  # WARNING: this guard prevents invalid moveaxis when src == dst
-+  if src is not None and dst is not None and src == dst:
-+    return x
-+
-   try:
-     _ = core.typeof(x)
-   except TypeError as e:
 diff -ruN /tmp/task4_patch_root/clean/jax/_src/lax/lax.py /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task4-jax-vmap-batch/task/solution/.decoys_work/jax/_src/lax/lax.py
 --- jax/_src/lax/lax.py	2026-06-26 23:47:09.955138843 +0800
 +++ jax/_src/lax/lax.py	2026-06-27 01:26:34.862189331 +0800

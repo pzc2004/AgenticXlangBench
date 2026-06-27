@@ -7,7 +7,7 @@ set -e
 MODEL="${1:-kimi-code/kimi-for-coding}"
 BUDGET="${2:-10}"
 SEED="${3:-42}"
-TIMEOUT="${4:-3600}"
+TIMEOUT="${4:-10800}"
 
 MODEL_SAFE=$(echo "$MODEL" | tr '/' '_')
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -15,6 +15,7 @@ TASK_DIR="$SCRIPT_DIR/task"
 RUN_ID="$(date +%Y%m%d_%H%M%S)_${MODEL_SAFE}_seed${SEED}"
 TRAJ_DIR="$SCRIPT_DIR/trajectories/$RUN_ID"
 mkdir -p "$TRAJ_DIR"
+chmod 777 "$TRAJ_DIR"  # 容器内 agent(uid 1500) 需要写 /trajectories
 
 TASK_NAME="$(basename "$SCRIPT_DIR")"
 
@@ -77,21 +78,26 @@ $(cat "$TASK_DIR/instruction.md")
 
 ## 完成后的验证步骤
 
-修复 bug 后,运行以下命令验证:
+修复 bug 后,运行以下命令查看分数:
 
 \`\`\`bash
-bash /task/tests/test.sh
+grade
 \`\`\`
 
-这会输出分数(0-1)。确保在修复后运行这一步。"
+这会输出 0-1 的总分。**目标是 1.0 满分:只要分数没到 1.0,就说明还有 JAX batching rule bug 没修干净,请继续逐操作对比定位、修复,直到分数无法再提高,不要在中途分数停手。**"
 
 CONTAINER_NAME="${TASK_NAME}_$(date +%s)"
 SNAPSHOT_IMAGE="${TASK_NAME}_snapshot_$(date +%s)"
 
+# 隐藏 /task/solution，防止 agent 直接看到 bugs.patch / solve.sh 等答案
+EMPTY_SOLUTION_DIR="/tmp/${TASK_NAME}_empty_solution_$$"
+mkdir -p "$EMPTY_SOLUTION_DIR"
+
 echo ""
 echo ">>> [1/3] 启动 Kimi Code (超时 ${TIMEOUT}s)..."
 timeout "$TIMEOUT" \
-docker run --name $CONTAINER_NAME \
+docker run --name $CONTAINER_NAME --gpus all \
+  --user 1500 -e HOME=/home/agent \
   --add-host="github.com:127.0.0.1" \
   --add-host="raw.githubusercontent.com:127.0.0.1" \
   --add-host="codeload.github.com:127.0.0.1" \
@@ -99,10 +105,10 @@ docker run --name $CONTAINER_NAME \
   --add-host="pypi.org:127.0.0.1" \
   --add-host="files.pythonhosted.org:127.0.0.1" \
   -v "$TASK_DIR/workspace:/workspace:ro" \
-  -v "$TASK_DIR/tests:/task/tests:ro" \
   -v "$TASK_DIR/instruction.md:/task/instruction.md:ro" \
+  -v "$EMPTY_SOLUTION_DIR:/task/solution:ro" \
   -v "$TRAJ_DIR:/trajectories" \
-  -v "$KIMI_CONFIG:/root/.kimi-code/config.toml:ro" \
+  -v "$KIMI_CONFIG:/home/agent/.kimi-code/config.toml:ro" \
   -e "ANTHROPIC_API_KEY=$ANTHROPIC_KEY" \
   task4 \
   kimi -p "$TASK_PROMPT" \
@@ -114,14 +120,14 @@ docker run --name $CONTAINER_NAME \
 echo ">>> [2/3] Kimi Code 结束,保存修复状态..."
 docker commit "$CONTAINER_NAME" "$SNAPSHOT_IMAGE" > /dev/null 2>&1
 docker rm -f "$CONTAINER_NAME" > /dev/null 2>&1
+rm -rf "$EMPTY_SOLUTION_DIR"
 
-echo ">>> 运行测试..."
-docker run --rm \
+echo ">>> 运行测试（受保护的最终判分，root 跑镜像内 /opt/judge/test.sh）..."
+docker run --rm --gpus all --user 0 \
   -v "$TASK_DIR/workspace:/workspace:ro" \
-  -v "$TASK_DIR/tests:/task/tests:ro" \
   "$SNAPSHOT_IMAGE" \
   bash -c "
-    bash /task/tests/test.sh 2>/dev/null || true
+    bash /opt/judge/test.sh 2>/dev/null || true
     cat /logs/verifier/reward.txt 2>/dev/null || echo '0.0'
   " > "$TRAJ_DIR/reward.txt" 2>/dev/null || true
 

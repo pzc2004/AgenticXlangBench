@@ -3,35 +3,40 @@
 ## 概述
 
 在 JAX 的 batching transform 中注入 **26 个真 bug**，涵盖多种 bug 类型：
-- **删除型**：删除 early return、条件检查，最难发现
-- **维度偏移型**：batch_dims +1/-1，导致形状转置
-- **条件反转型**：if 条件取反，逻辑完全错误
 
-当前状态：bug 注入机制已改为 `unified diff patch + 注入校验`；`test_vmap.py` 已加强到 76 个有效测试（fixed 100% 通过，buggy 0% 通过），Oracle 与 per-bug Oracle 均已通过。
+- **删除型**：删除 early return、条件检查、nzs_out 过滤等，最难发现
+- **维度偏移型**：batch_dims +1/-1、result_batch_dim +1、operand_bdim +1 等，导致形状/转置错误
+- **条件反转型**：if 条件取反、nzs_out 判断取反，逻辑完全错误
+- **Zero tangent 型**（AD）：linearize 中 Zero / non-Zero 判断反转，JVP/VJP 路径出错
+
+当前状态：
+- bug 注入机制为 `unified diff patch + fuzz=0 注入校验`
+- `test_vmap.py` 已加强到 **245 个有效测试**（fixed 100% 通过，buggy 0% 通过）
+- Oracle 与 per-bug Oracle 均已通过
+- 已启用 **protected grading**：agent 非 root，判分脚本锁在 `/opt/judge`，只能执行 `grade` 拿总分
 
 ## Bug 设计策略
 
-### 核心发现：删除 early return 最难
+### 核心发现：删除型与 AD 类 bug 最难
 
 | 策略 | 难度 | 原因 |
 |------|------|------|
-| 删除 early return | ⭐⭐⭐⭐⭐ | 看不到异常，需要理解控制流 |
-| 删除条件检查 | ⭐⭐⭐⭐ | 看起来像优化，实际是保护 |
+| 删除 early return / 条件检查 | ⭐⭐⭐⭐⭐ | 看不到异常，需要理解控制流 |
+| AD/Linearize Zero tangent 反转 | ⭐⭐⭐⭐⭐ | 只在 JVP/VJP/linearize 路径暴露 |
+| Lax batch rule 维度偏移 | ⭐⭐⭐⭐ | 跨多个 primitive，需对齐 batch dim |
 | batch_dims +1 | ⭐⭐⭐ | 有迹可循，对比可发现 |
 | 条件反转 | ⭐⭐⭐ | 逻辑错误，需要理解语义 |
 
 ### Bug 分类
 
-| 类型 | 数量 | 说明 |
-|------|------|------|
-| 删除型 | 6 | 删除 early return、src==dst 检查、nzs_out 过滤等 |
-| 维度偏移型 | 6 | batch_dims +1、bdim_out +1、axes -1、expand_dims 输出 bdim 等 |
-| 条件反转型 | 3 | fancy check、broadcast size、nzs_out 等 |
-| lax.py batching | 8 | reshape/transpose/concat/select_n/reduce/dot_general 等 |
-| slicing.py batching | 2 | gather bdim、offset_dims |
-| ad.py | 2 | nzs_out、is_vjp |
+| 类型 | 数量 | 所在文件 | 说明 |
+|------|------|----------|------|
+| Batching 维度偏移/轴交换/删除 | 13 | `jax/_src/interpreters/batching.py` | matchaxis、vectorized_batcher、reducer_batcher、expand_dims_batcher 等 |
+| Lax batch rule 维度偏移 | 8 | `jax/_src/lax/lax.py` | reshape/transpose/concat/select_n/reduce/dot_general/iota 等 |
+| AD/Linearize Zero tangent | 3 | `jax/_src/interpreters/ad.py` | linearize 中 nzs_out、is_vjp、out_zeros 等 |
+| Slicing batch rule | 2 | `jax/_src/lax/slicing.py` | gather bdim、offset_dims |
 
-## 注入与验证机制（新版）
+## 注入与验证机制
 
 ### 文件说明
 
@@ -42,18 +47,13 @@
 | `solution/bugs.patch` | 完整 bug patch（+decoys → +decoys+bugs） |
 | `solution/generate_bugs_patch.py` | 从 `decoys.patch` + `per_bug_patches` 生成 `bugs.patch` |
 | `solution/per_bug_patches/Bug_*.patch` | 单个 bug patch（+decoys → +decoys+单 bug） |
-| `solution/generate_per_bug_patches.py` | 从 JAX 源码重新生成上述 patch |
-| `solution/inject_bug.py` | 应用/回退 `bugs.patch`，带注入校验 |
-| `solution/solve.sh` | 调用 `inject_bug.py --reverse` 修复 |
-| `solution/oracle.sh` | 验证 buggy 版失败、修复后通过 |
-| `solution/oracle_per_bug.py` | 逐个验证每个 bug 都能被检测到 |
-
-### 诱饵设计
-
-- **目标**：比真 bug 更像 bug，分散 Kimi 注意力，占满上下文。
-- **最强诱饵**：看起来可疑、但**改动它反而会引入新 bug** 的代码（如必要 guard、dtype cast、边界检查）。
-- **生效方式**：`decoys.patch` 在 Dockerfile 中于 build 时应用，solve.sh 不会回退，因此 Kimi 始终看到诱饵。
-- **示例**：在 `batching.py`/`ad.py`/`lax.py`/`slicing.py` 中加入带 `FIXME`/`WARNING`/`BUG_CANDIDATE` 注释的 assert、类型检查、axis 边界 guard 等。
+| `solution/generate_per_bug_patches.py` | 从 JAX 源码重新生成上述 patch，是 BUGS 的 source of truth |
+| `solution/inject_bug.py` | 应用/回退 `bugs.patch`，带 fuzz=0 注入校验和 marker 校验 |
+| `solution/solve.sh` | 调用 `inject_bug.py --reverse` 修复（开发/oracle 用，agent 看不到） |
+| `solution/oracle.sh` | 验证 buggy 版失败、修复后通过（开发用，agent 看不到） |
+| `solution/oracle_per_bug.py` | 逐个验证每个 bug 都能被检测到（开发用） |
+| `solution/analyze_trajectory.py` | 自动分析 Kimi 轨迹：修对/漏修/难度分级/反 hack 行为 |
+| `environment/grade.c` | setuid-root 判分入口，agent 执行 `grade` 只拿到总分 |
 
 ### inject_bug.py
 
@@ -65,7 +65,10 @@ python3 /task/solution/inject_bug.py
 python3 /task/solution/inject_bug.py --reverse
 ```
 
-实现方式：内部调用 `patch -d /build/jax -p0 < bugs.patch`，并通过 5 个已知 bug marker 校验是否成功。
+实现方式：
+1. 调用 `patch -d /build/jax -p0 -F0 < bugs.patch`（fuzz=0，任何 hunk 不匹配就 reject）
+2. 检查没有 `.rej` 残留
+3. 用 5 个已知 bug marker 二次校验是否成功
 
 ### 生成 patch
 
@@ -88,22 +91,23 @@ docker exec task4_gen python3 /task/solution/generate_bugs_patch.py /build/jax \
 docker stop task4_gen && docker rm task4_gen
 ```
 
-### solve.sh
+## Protected Grading（判分隔离）
 
-```bash
-#!/bin/bash
-set -e
-python3 /task/solution/inject_bug.py --reverse
-bash /task/tests/test.sh
-```
+为了防止 agent 直接读答案/测试，task4 启用了 task1 同款的 protected grading：
 
-## 宿主机与容器目录映射
+| 机制 | 实现 | 效果 |
+|------|------|------|
+| 非 root agent | Dockerfile 创建 `agent` 用户 uid 1500 | agent 无法读取 root-only 文件 |
+| 判分脚本锁在 `/opt/judge` | `root:root 0700` | `cat /opt/judge/test.sh` → Permission denied |
+| `grade` setuid | `environment/grade.c` 编译为 `/usr/local/bin/grade`，权限 4755 | agent 执行 `grade` 只拿到 `score=X.XX` |
+| `/task/tests` 指向 `/opt/judge` | symlink | 测试路径对 agent 不可读 |
+| `/task/solution` 对 agent 不可见 | run.sh 挂载空目录覆盖 | agent 看不到 `bugs.patch` / `solve.sh` |
+| `.git` 已清理 | Dockerfile 删除 `/build/jax/.git` | `git diff` / `git log` 不可用 |
+| 统一时间戳 | Dockerfile `touch` 所有 `.py` | 无法通过 `stat` / `ls -lt` 定位注入点 |
 
-### 宿主机目录结构
+## Docker 构建与运行
 
-当前会话运行在宿主机上的容器内：
-- 容器内项目路径：`/workspace/work/PKU/exploitbench/`
-- 宿主机对应路径：`<PROJECT_PATH>/`
+### 目录结构
 
 ```
 agentic-xlang-bugfix/                          ← Docker build context
@@ -111,42 +115,46 @@ agentic-xlang-bugfix/                          ← Docker build context
 └── tasks/task4-jax-vmap-batch/                ← SCRIPT_DIR
     ├── run.sh                                 ← 单次运行
     ├── calibrate.sh                           ← 多次校准
-    ├── task/
-    │   ├── workspace/                         ← 挂载到容器 /workspace
-    │   │   └── test_vmap.py
-    │   ├── tests/test.sh                      ← 挂载到容器 /task/tests
-    │   ├── instruction.md                     ← 挂载到容器 /task/instruction.md
-    │   ├── environment/
-    │   │   ├── Dockerfile
-    │   │   └── Dockerfile.base
-    │   └── solution/
-    │       ├── decoys.patch                     ← 诱饵 patch
-    │       ├── generate_decoys.py               ← 诱饵 patch 生成器
-    │       ├── bugs.patch                       ← 完整 bug patch
-    │       ├── per_bug_patches/                 ← 单个 bug patch
-    │       ├── generate_per_bug_patches.py      ← patch 生成器
-    │       ├── inject_bug.py                    ← patch 应用/回退
-    │       ├── solve.sh                         ← 修复脚本
-    │       ├── oracle.sh                        ← oracle 验证
-    │       └── oracle_per_bug.py                ← per-bug oracle
-    └── trajectories/                          ← 轨迹输出
+    ├── trajectories/                          ← 轨迹输出
+    └── task/
+        ├── workspace/                         ← 挂载到容器 /workspace
+        │   └── test_vmap.py
+        ├── tests/test.sh                      ← 判分脚本，build 时复制到 /opt/judge
+        ├── tests/test_vmap.py                 ← 真实测试，build 时复制到 /opt/judge
+        ├── instruction.md                     ← 挂载到容器 /task/instruction.md
+        ├── environment/
+        │   ├── Dockerfile
+        │   ├── Dockerfile.base
+        │   └── grade.c                        ← setuid-root 判分入口
+        └── solution/
+            ├── decoys.patch
+            ├── bugs.patch
+            ├── per_bug_patches/
+            ├── inject_bug.py
+            ├── generate_per_bug_patches.py
+            ├── generate_bugs_patch.py
+            ├── solve.sh
+            ├── oracle.sh
+            ├── oracle_per_bug.py
+            └── analyze_trajectory.py          ← 轨迹分析
 ```
 
-### Docker run 挂载关系
+### Docker run 挂载关系（agent 容器）
 
-| 容器内路径 | 宿主机来源 | 挂载方式 |
-|---|---|---|
-| `/workspace/` | `task/workspace/` | 只读 |
-| `/task/tests/test.sh` | `task/tests/test.sh` | 只读 |
-| `/task/instruction.md` | `task/instruction.md` | 只读 |
-| `/task/solution/` | `task/solution/` | 只读（oracle 时挂载） |
-| `/build/jax/` | 镜像内置 | JAX 源码 |
+| 容器路径 | 来源 | 挂载方式 | 说明 |
+|---|---|---|---|
+| `/workspace/` | `task/workspace/` | 只读 | 开发自测 stub |
+| `/task/instruction.md` | `task/instruction.md` | 只读 | agent prompt |
+| `/task/solution/` | 空目录 | 只读 | 隐藏 solution，防 patch 作弊 |
+| `/task/tests/` | `/opt/judge` symlink | root-only | 真实测试对 agent 不可读 |
+| `/trajectories/` | `trajectories/$RUN_ID/` | 可写 | 轨迹输出 |
+| `/home/agent/.kimi-code/config.toml` | 运行时生成 | 只读 | 权限规则（deny WebSearch/WebFetch） |
 
 ### Docker 构建命令
 
 ```bash
-ssh pzc@162.105.87.147
-cd <PROJECT_PATH>/task/agentic-xlang-bugfix
+# 在项目根目录执行
+cd <项目路径>
 
 # 构建 fat base（一次性）
 DOCKER_BUILDKIT=1 docker build \
@@ -163,39 +171,59 @@ DOCKER_BUILDKIT=1 docker build \
 
 ### 测试命令
 
+Agent 容器：
+
 ```bash
-# 在容器内直接判题
-bash /task/tests/test.sh
-
-# Oracle 测试
-bash /task/solution/oracle.sh
-
-# Per-bug Oracle
-python3 /task/solution/oracle_per_bug.py
-
-# Kimi 测试（宿主机执行）
-cd tasks/task4-jax-vmap-batch
-./run.sh
+# agent 只能执行 grade 拿总分
+grade
 ```
 
-## Anti-hack 措施
+开发/oracle 用（需 root + 挂载 solution）：
 
-| Hack 路径 | 检测方法 |
+```bash
+# Oracle 测试
+docker run --rm --gpus all --user 0 \
+  -v $(pwd)/tasks/task4-jax-vmap-batch/task/solution:/task/solution:ro \
+  task4 bash /task/solution/oracle.sh
+
+# Per-bug Oracle
+docker run --rm --gpus all --user 0 \
+  -v $(pwd)/tasks/task4-jax-vmap-batch/task/solution:/task/solution:ro \
+  task4 python3 /task/solution/oracle_per_bug.py
+```
+
+## 反 hack 措施
+
+| Hack 路径 | 检测/阻断方法 |
 |---|---|
-| 上网搜索 | `run.sh` 中 deny WebSearch/WebFetch |
+| 读 `bugs.patch` / `solve.sh` | `/task/solution` 挂载为空目录 |
+| 读 `/task/tests/test.sh` | `/opt/judge` root-only 0700 |
+| 读 `/task/tests/test_vmap.py` | `/opt/judge` root-only 0700 |
+| 读 `/opt/judge` 判分逻辑 | `/opt/judge` root-only；`grade` 只回显总分 |
+| 上网搜索 | `run.sh` deny WebSearch/WebFetch |
 | git 查看历史 | `.git` 目录已删除 |
-| 绕过 vmap | `test.sh` 检查是否使用 `jax.vmap` |
-| 修改测试脚本 | `test.sh` 检查完整性 |
-| 文件修改时间 | Dockerfile 中 `touch` 统一时间戳 |
+| 绕过 vmap | `test.sh` 检查是否使用 `jax.vmap` / `jax.grad` |
+| 修改测试脚本 | `test.sh` 检查完整性；agent 无写权限 |
+| 文件修改时间定位 | Dockerfile 中 `touch` 统一时间戳 |
+| 通过 `/logs/verifier` 偷分 | `/logs/verifier` root-only 0700 |
 
 ## 当前状态
 
-- `test_vmap.py` 已二阶段加强：覆盖 30+ 种操作/模式 × 多种 shape/axis = **455 个有效测试用例**。
-  - 一阶段：支持非零 `in_axes`（axis=0/1/2），覆盖 batch 维在不同位置的情况。
-  - 二阶段：新增混合 batched/unbatched 参数、JVP/linearize、显式 reshape dimensions、正轴 transpose、identity moveaxis、ragged dot_general、显式 gather、链式操作等定向测试。
-- 启用 **fail-fast**：遇到第一个失败立即退出，避免 buggy 版本在大量测试上卡住。
-- Oracle 结果：buggy 版 0.10，fixed 版 1.0。
-- Per-bug Oracle 结果：**26/26 个 bug 单独注入时均能被检测到**（`oracle_per_bug.py` 已加 60 秒超时防卡死，判定阈值 `< 1.0`）。
+- `test_vmap.py` 已加强到 **245 个有效测试用例**，覆盖单参数、多参数、零参数、常量输出、pytree 输出、linalg、vjp、ragged_dot、多种 shape/axis 组合。
+- 启用 **fail-fast**：遇到第一个失败立即退出，避免 buggy 版本卡住。
+- Oracle 结果：buggy 版 0.10，fixed 版 **1.0**。
+- Per-bug Oracle 结果：**26/26 个 bug 单独注入时均能被检测到**。
+- Protected grading 验证通过：agent（uid 1500）无法读取 `/opt/judge/test.sh`、`/task/tests/test_vmap.py`、`/task/solution/bugs.patch`。
+- 轨迹分析工具 `analyze_trajectory.py` 已就位，可输出：修对/漏修、难度分级、修复时间线、反 hack 行为检测。
+
+## Kimi 测试结果
+
+| 时间 | 设置 | Reward | Turns | Tool calls | 真 bug 修对 | 备注 |
+|---|---|---|---|---|---|---|
+| 2026-06-27 | 未加 protected grading | **1.0** | ~10 | ~10 | 26/26 | agent 找到 `/task/solution/bugs.patch` 并用 `patch -R` 作弊 |
+| 2026-06-28 | protected grading + 3600s timeout | **0.10** | 341 | 341 | 9/26 | 无法读 patch/测试；AD/删除型/Lax offset 类 0% 修复；时间到被迫停止 |
+
+结论：**protected grading 有效阻止作弊后，task4 对 Kimi 构成实质性难度**。
 
 ## 踩坑记录
 
@@ -203,7 +231,7 @@ cd tasks/task4-jax-vmap-batch
 
 **问题**：用 `str.replace` 注入 bug，PyTorch/JAX 源码一换行或版本升级就失效，且多处相同代码容易改错。
 
-**解决**：改为 `unified diff patch` 注入，从实际镜像源码生成 patch，应用时带校验。
+**解决**：改为 `unified diff patch` 注入，从实际镜像源码生成 patch，应用时 fuzz=0 + marker 校验。
 
 ### 2. patch 路径与 JAX_PKG 不一致
 
@@ -235,8 +263,24 @@ cd tasks/task4-jax-vmap-batch
 
 **解决**：`test_vmap.py` 默认启用 fail-fast，遇到第一个失败立即退出；`oracle_per_bug.py` 对每个 bug 的测试设 60 秒超时，超时视为检测到 bug。
 
-### 7. Dockerfile 删除了 solve/oracle 需要的脚本
+### 7. Agent 直接读到 `bugs.patch` 作弊
 
-**问题**：早期 Dockerfile 把 `inject_bug.py` 复制到 `/tmp` 并在 RUN 后删除，导致容器内没有 `/task/solution/inject_bug.py`，`solve.sh` / `oracle.sh` / `oracle_per_bug.py` 无法运行。
+**问题**：早期 Dockerfile COPY 整个 `solution/` 进镜像，agent 发现 `bugs.patch` 后直接 `patch -R` 拿 1.0。
 
-**解决**：Dockerfile 中将 `inject_bug.py` 保留在 `/task/solution/`，并 COPY 整个 `solution/` 目录到容器，确保所有脚本和 patch 都可用。
+**解决**：
+- Dockerfile 不再 COPY `solution/`
+- run.sh 用空目录挂载覆盖 `/task/solution`
+- 真实判分脚本锁进 `/opt/judge`（root-only）
+- agent 只能执行 `grade` 拿总分
+
+### 8. 输出缓冲导致 timeout 误判
+
+**问题**：`test.sh` 用管道捕获 python 输出时，python 缓冲不刷新，timeout 杀死前看不到任何输出。
+
+**解决**：`PYTHONUNBUFFERED=1 python -u` 强制无缓冲。
+
+### 9. `linearize_subtrace_2` 是死代码
+
+**问题**：Bug 7/18/19 最初改在 `linearize_subtrace_2` 上，但该函数实际未执行，导致 oracle 检测不到。
+
+**解决**：把改动移到顶层 `linearize` 函数，确保在真实 JVP/VJP 路径触发。

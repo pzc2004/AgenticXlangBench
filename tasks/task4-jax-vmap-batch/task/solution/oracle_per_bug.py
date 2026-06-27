@@ -23,7 +23,7 @@ def run_test():
     # 设置 60 秒超时，防止个别 bug 导致测试无限卡住
     try:
         result = subprocess.run(
-            ["python3", "/workspace/test_vmap.py", "--seed", "42"],
+            ["python3", "/task/tests/test_vmap.py", "--seed", "42"],
             capture_output=True, text=True, timeout=60
         )
     except subprocess.TimeoutExpired:

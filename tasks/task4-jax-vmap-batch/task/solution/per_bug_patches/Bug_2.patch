@@ -1,11 +1,11 @@
 --- a/jax/_src/interpreters/batching.py
 +++ b/jax/_src/interpreters/batching.py
-@@ -625,7 +625,7 @@
-   assert all(isinstance(d, (int, type(None))) for d in batch_dims), batch_dims
+@@ -626,7 +626,7 @@
  
    assert not prim.multiple_results
--  if all(d is None for d in batch_dims):
-+  if False:
-     return prim.bind(*batched_args, **params), None
+   if all(d is None for d in batch_dims):
+-    return prim.bind(*batched_args, **params), None
++    return prim.bind(*batched_args, **params), 0
    assert all(batch_dims[0] == bd for bd in batch_dims[1:]), batch_dims
    return prim.bind(*batched_args, **params), batch_dims[0]
+ 

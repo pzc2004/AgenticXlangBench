@@ -1,11 +1,14 @@
 --- a/jax/_src/interpreters/batching.py
 +++ b/jax/_src/interpreters/batching.py
-@@ -741,7 +741,7 @@
+@@ -737,8 +737,10 @@
    except TypeError as e:
      raise TypeError(f"Output from batched function {x!r} with type "
                      f"{type(x)} is not a valid JAX type") from e
 -  if src == dst or dst is infer:
 +  if dst is infer:
      return x
++  if src == dst:
++    return moveaxis(x, src, dst + 1)
    elif type(src) == type(dst) == int:
      return moveaxis(x, src, dst)
+   elif src is None and type(dst) is int:

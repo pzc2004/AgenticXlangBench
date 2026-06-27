@@ -12,11 +12,11 @@ from pathlib import Path
 BUGS = [
     ("Bug 1", "jax/_src/interpreters/batching.py",
      "  if src == dst or dst is infer:\n    return x",
-     "  if dst is infer:\n    return x"),
+     "  if dst is infer:\n    return x\n  if src == dst:\n    return moveaxis(x, src, dst + 1)"),
 
     ("Bug 2", "jax/_src/interpreters/batching.py",
      "  if all(d is None for d in batch_dims):\n    return prim.bind(*batched_args, **params), None",
-     "  if False:\n    return prim.bind(*batched_args, **params), None"),
+     "  if all(d is None for d in batch_dims):\n    return prim.bind(*batched_args, **params), 0"),
 
     ("Bug 3", "jax/_src/interpreters/batching.py",
      "  if all(d is None for d in batch_dims):\n    return prim.bind(*batched_args, axes=axes, **params), None",
@@ -27,14 +27,16 @@ BUGS = [
      "    elif False:"),
 
     ("Bug 5", "jax/_src/interpreters/batching.py",
-     "  elif dst is None and sum_match or dst is sum_axis:\n    return x.sum(src)",
-     "  elif False:\n    return x.sum(src + 1 if src is not None else src)"),
+     "  elif src is None and type(dst) is int:\n"
+     "    return broadcast(x, axis_data.size, canonicalize_axis(dst, np.ndim(x) + 1),\n"
+     "                     axis_data.explicit_mesh_axis)",
+     "  elif src is None and type(dst) is int:\n"
+     "    return broadcast(x, axis_data.size + 1, canonicalize_axis(dst, np.ndim(x) + 1),\n"
+     "                     axis_data.explicit_mesh_axis)"),
 
     ("Bug 7", "jax/_src/interpreters/ad.py",
-     "  out_tangents = tuple(t for t, nz in zip(out_tangents, nzs_out) if nz)\n"
-     "  out_tangents = map(partial(tangent_trace.to_jaxpr_tracer, source_info=source_info), out_tangents)",
-     "  out_tangents = tuple(out_tangents)\n"
-     "  out_tangents = map(partial(tangent_trace.to_jaxpr_tracer, source_info=source_info), out_tangents)"),
+     "  out_nz_tangents = [t for t, nz in zip(out_tangents, out_nzs) if nz]",
+     "  out_nz_tangents = []"),
 
     ("Bug 8", "jax/_src/interpreters/batching.py",
      "  return prim.bind(*batched_args, **params), batch_dims[0]",
@@ -71,20 +73,16 @@ BUGS = [
      "  return (out, (1,) * len(out)) if prim.multiple_results else (out, 1)"),
 
     ("Bug 17", "jax/_src/interpreters/batching.py",
-     "    return broadcast(x, axis_data.size,",
-     "    return broadcast(x, axis_data.size - 1,"),
+     "    return broadcast(x, size, 0, mesh_axis=mesh_axis)",
+     "    return broadcast(x, size, 1, mesh_axis=mesh_axis)"),
 
     ("Bug 18", "jax/_src/interpreters/ad.py",
-     "      out_primals, out_tangents = ans.map(linearize_trace.to_primal_tangent_pair).unzip2()\n"
-     "      del linearize_trace, ans, tracers\n"
-     "  nzs_out = tuple(type(t) is not Zero for t in out_tangents)",
-     "      out_primals, out_tangents = ans.map(linearize_trace.to_primal_tangent_pair).unzip2()\n"
-     "      del linearize_trace, ans, tracers\n"
-     "  nzs_out = tuple(type(t) is Zero for t in out_tangents)"),
+     "  out_nzs = [type(t) is not Zero for t in out_tangents]",
+     "  out_nzs = [type(t) is Zero for t in out_tangents]"),
 
     ("Bug 19", "jax/_src/interpreters/ad.py",
-     "    linearize_trace = LinearizeTrace(parent_trace, tangent_trace, is_vjp)",
-     "    linearize_trace = LinearizeTrace(parent_trace, tangent_trace, not is_vjp)"),
+     "  out_zeros = map(op.not_, out_nzs)",
+     "  out_zeros = out_nzs"),
 
     ("Bug 20", "jax/_src/lax/lax.py",
      "    dimensions = (0,) + tuple(np.add(1, dimensions))",
@@ -110,7 +108,7 @@ BUGS = [
 
     ("Bug 25", "jax/_src/lax/lax.py",
      "    return reduce_p.bind(*(operands + init_values),\n                         computation=computation,\n                         dimensions=tuple(new_dimensions),\n                         jaxpr=jaxpr), new_operand_bdims",
-     "    return reduce_p.bind(*(operands + init_values),\n                         computation=computation,\n                         dimensions=tuple(new_dimensions),\n                         jaxpr=jaxpr), [0] * num_operands"),
+     "    return reduce_p.bind(*(operands + init_values),\n                         computation=computation,\n                         dimensions=tuple(d + 1 for d in new_dimensions),\n                         jaxpr=jaxpr), new_operand_bdims"),
 
     ("Bug 26a", "jax/_src/lax/lax.py",
      "  batched_out = invoke_prim(\n"
@@ -133,14 +131,10 @@ BUGS = [
      "  return batched_out, result_batch_dim + 1\n"),
 
     ("Bug 26b", "jax/_src/lax/lax.py",
-     "  if _is_ragged_contracting(batched_args[0].ndim - 1,\n"
-     "                            ragged_dot_dimension_numbers):\n"
-     "    result_batch_dim += 1\n"
-     "  return batched_out, result_batch_dim\n",
-     "  if _is_ragged_contracting(batched_args[0].ndim - 1,\n"
-     "                            ragged_dot_dimension_numbers):\n"
-     "    result_batch_dim += 1\n"
-     "  return batched_out, result_batch_dim + 1\n"),
+     "  out = reshape(operand, operand.shape[:1] + new_sizes, dimensions,\n"
+     "                out_sharding=sharding)\n  return out, 0",
+     "  out = reshape(operand, operand.shape[:1] + new_sizes, dimensions,\n"
+     "                out_sharding=sharding)\n  return out, 1"),
 
     ("Bug 27", "jax/_src/lax/slicing.py",
      "    operand = batching.moveaxis(operand, operand_bdim, 0)\n    operand_bdim = 0",

@@ -1,11 +1,11 @@
 --- a/jax/_src/lax/lax.py
 +++ b/jax/_src/lax/lax.py
-@@ -8239,7 +8239,7 @@
+@@ -8238,7 +8238,7 @@
+     new_operand_bdims = [0] * num_operands
      return reduce_p.bind(*(operands + init_values),
                           computation=computation,
-                          dimensions=tuple(new_dimensions),
--                         jaxpr=jaxpr), new_operand_bdims
-+                         jaxpr=jaxpr), [0] * num_operands
+-                         dimensions=tuple(new_dimensions),
++                         dimensions=tuple(d + 1 for d in new_dimensions),
+                          jaxpr=jaxpr), new_operand_bdims
    else:
      raise NotImplementedError  # loop and stack
- 

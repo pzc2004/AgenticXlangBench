@@ -39,7 +39,7 @@ bug 代码执行(CUDA kernel / C++ / Rust)
 
 ## 最新进展
 
-### 2026-06-25: Task 1 & Task 4 重大突破
+### 2026-06-28: Task 4 protected grading 完成，Kimi 0.10
 
 **Task 1 (PyTorch CUDA)**:
 - Bug 数量：3 → **25+ 真 bug + 40+ 诱饵**
@@ -49,16 +49,24 @@ bug 代码执行(CUDA kernel / C++ / Rust)
 - Kimi 测试：91 步修完（用"霰弹枪策略"）
 
 **Task 4 (JAX vmap)**:
-- Bug 数量：2 → **21+ 真 bug + 30+ 诱饵**
+- Bug 数量：2 → **26 真 bug + 11 诱饵**（诱饵后续可扩到 30+）
 - 新增删除型 bug（删 early return、条件检查）
-- inject_bug.py 支持 `--reverse`，solve.sh 直接调用
+- 新增 AD/Linearize Zero tangent 类 bug（JVP/VJP/linearize 路径触发）
+- inject_bug.py 支持 `--reverse`，solve.sh 直接调用；注入校验升级为 `patch -F0 + marker + .rej` 检查
+- 启用 **protected grading**：非 root agent、`/opt/judge` root-only、`grade` setuid、空目录覆盖 `/task/solution`
+- 新增 `analyze_trajectory.py` 轨迹分析工具
 - Oracle 测试通过：Buggy 0.10, Fixed 1.0
-- Kimi 测试：299 步修完（用"霰弹枪策略"）
+- Per-bug Oracle：**26/26 全部通过**
+- Kimi 测试：
+  - 未加 protected grading：~10 步 reward **1.0**（agent 直接读 `bugs.patch` 作弊）
+  - 加 protected grading + 3600s：341 turns reward **0.10**，9/26 真 bug 修对，被迫 timeout 停止
 
 **关键发现**：
 1. 删除代码比添加代码更难被 agent 发现
 2. 陷阱诱饵（修了反而有害）是有效的反 hack 手段
 3. "霰弹枪策略"（修所有可疑代码）是 agent 的常见行为
+4. **Protected grading 是必须的**：agent 会尝试读 `bugs.patch`、判分脚本、`/logs/verifier` 作弊，必须对 agent 隐藏 solution 和测试逻辑
+5. **轨迹分析工具很重要**：`analyze_trajectory.py` 能区分“修对真 bug”“改坏代码”“无效编辑”，是难度校准的关键
 
 ### 反 hack 措施汇总
 
@@ -69,17 +77,15 @@ bug 代码执行(CUDA kernel / C++ / Rust)
 | 统一文件修改时间 | Dockerfile 中 `touch` 所有文件 |
 | 陷阱诱饵 | `&& True`、`assert`，删了就出错 |
 | Anti-hack 检查 | test.sh 中检查完整性 |
+| **Protected grading** | solution/测试对 agent 不可读，`grade` setuid 只回显总分 |
 
 详见 `skills/anti-hack.md`。
 
 ## 快速开始
 
 ```bash
-# SSH 到宿主机
-ssh pzc@162.105.87.147
-
 # 进入项目目录
-cd ~/data/PKU/exploitbench/task/agentic-xlang-bugfix
+cd <项目路径>
 
 # 构建镜像
 docker build --no-cache -t task1 -f tasks/task1-pytorch-cuda-index/task/environment/Dockerfile .
@@ -99,37 +105,10 @@ cd tasks/task4-jax-vmap-batch && ./run.sh
 
 ## 项目架构
 
-### 整体架构
+评测管线由四个阶段组成：
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                      开发环境 (容器内)                        │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐         │
-│  │ Claude Code │  │   Skills    │  │   Memory    │         │
-│  │  (AI 助手)  │  │ (自动化工具) │  │ (持久记忆)  │         │
-│  └──────┬──────┘  └──────┬──────┘  └─────────────┘         │
-│         │                │                                  │
-│         ▼                ▼                                  │
-│  ┌─────────────────────────────────────────┐               │
-│  │           工作流 (Workflow)              │               │
-│  │  generate-task → calibrate → select     │               │
-│  └─────────────────────────────────────────┘               │
-└─────────────────────────────────────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────┐
-│                      宿主机 (162.105.87.147)                 │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐         │
-│  │   Docker    │  │   Kimi Code │  │  轨迹存储   │         │
-│  │  (构建镜像)  │  │  (测试 Agent)│  │ (trajectories)│        │
-│  └──────┬──────┘  └──────┬──────┘  └─────────────┘         │
-│         │                │                                  │
-│         ▼                ▼                                  │
-│  ┌─────────────────────────────────────────┐               │
-│  │         评测管线 (Pipeline)              │               │
-│  │  build → oracle → kimi → analyze        │               │
-│  └─────────────────────────────────────────┘               │
-└─────────────────────────────────────────────────────────────┘
+生成任务(generate-task) → 构建镜像(build) → Oracle 验证 → Kimi 测试 → 轨迹分析(analyze) → 调整难度
 ```
 
 ### 自动化管线
@@ -313,41 +292,53 @@ agentic-xlang-bugfix/
     │       └── tests/
     │           └── test.sh            ← 判题脚本 (多场景 + anti-hack)
     └── task4-jax-vmap-batch/
-        └── ... (同上结构)
+        ├── README.md                  ← 设计思路 + 踩坑记录
+        ├── run.sh                     ← 单次运行 (deny WebSearch, protected grading)
+        ├── calibrate.sh               ← 多模型校准
+        ├── trajectories/              ← 轨迹存储
+        └── task/
+            ├── task.toml              ← 任务元数据
+            ├── instruction.md         ← 发给 agent 的 prompt
+            ├── environment/
+            │   ├── Dockerfile         ← 注入 bug + touch + protected grading
+            │   ├── Dockerfile.base    ← fat base 镜像
+            │   └── grade.c            ← setuid-root 判分入口
+            ├── workspace/             ← 用户代码 (test_vmap.py stub)
+            ├── solution/
+            │   ├── inject_bug.py      ← 注入 bug (支持 --reverse)
+            │   ├── solve.sh           ← 调用 inject_bug.py --reverse
+            │   ├── oracle.sh          ← 验证 buggy 失败 + fixed 通过
+            │   └── analyze_trajectory.py ← 轨迹分析
+            └── tests/
+                └── test.sh            ← 判题脚本 (多场景 + anti-hack)
 ```
 
 ## 评测流程
 
-```
-┌──────────────────────────────────────────────────────────────┐
-│                    完整评测流程                                │
-├──────────────────────────────────────────────────────────────┤
-│                                                              │
-│  1. 构建镜像                                                  │
-│     docker build --no-cache -t task1 -f Dockerfile .         │
-│         ↓                                                    │
-│  2. Oracle 验证                                               │
-│     ./test_oracle.sh task1                                   │
-│     ├── buggy 版本: 分数 < 1.0 ✓                             │
-│     └── fixed 版本: 分数 = 1.0 ✓                             │
-│         ↓                                                    │
-│  3. Kimi 测试                                                 │
-│     cd tasks/task1-pytorch-cuda-index && ./run.sh            │
-│     ├── kimi 执行任务                                         │
-│     ├── 保存 trajectory.jsonl                                │
-│     └── 输出 result.jsonl (reward/turns)                     │
-│         ↓                                                    │
-│  4. 轨迹分析                                                  │
-│     分析 agent 的调试路径、关键转折、失败原因                    │
-│         ↓                                                    │
-│  5. 调整难度                                                  │
-│     太简单 → 增加 bug / 删除型 bug / 陷阱诱饵                  │
-│     太难 → 减少 bug / 加提示                                   │
-│         ↓                                                    │
-│  6. 重复 2-5 直到成功率 ~50%                                   │
-│                                                              │
-└──────────────────────────────────────────────────────────────┘
-```
+1. **构建镜像**
+   ```bash
+   docker build --no-cache -t task1 -f tasks/task1-pytorch-cuda-index/task/environment/Dockerfile .
+   docker build --no-cache -t task4 -f tasks/task4-jax-vmap-batch/task/environment/Dockerfile .
+   ```
+
+2. **Oracle 验证**
+   - buggy 版本分数 < 1.0
+   - fixed 版本分数 = 1.0
+
+3. **Kimi 测试**
+   ```bash
+   cd tasks/task1-pytorch-cuda-index && ./run.sh
+   cd tasks/task4-jax-vmap-batch && ./run.sh
+   ```
+
+4. **轨迹分析**
+   - 用 `analyze_trajectory.py` 分析 agent 调试路径、关键转折、失败原因
+
+5. **调整难度**
+   - 太简单 → 增加 bug / 删除型 bug / 陷阱诱饵
+   - 太难 → 减少 bug / 加提示
+
+6. **重复 2-5 直到成功率 ~50%**
 
 ## 反 Reward Hack
 

@@ -1,11 +1,11 @@
 --- a/jax/_src/interpreters/ad.py
 +++ b/jax/_src/interpreters/ad.py
-@@ -101,7 +101,7 @@
-   with core.take_current_trace() as parent_trace:
-     tangent_trace = pe.DynamicJaxprTrace(debug_info, auto_dce=True)
-     tangent_trace.tag = tag
--    linearize_trace = LinearizeTrace(parent_trace, tangent_trace, is_vjp)
-+    linearize_trace = LinearizeTrace(parent_trace, tangent_trace, not is_vjp)
-     tracers = [LinearizeTracer(linearize_trace, p,
-                                tangent_trace.new_arg(typeof(p).to_tangent_aval(),
-                                                      source_info))
+@@ -333,7 +333,7 @@
+       jaxpr, [True] * len(jaxpr.outvars),
+       [False] * len(jaxpr.constvars) + [True] * len(jaxpr.invars))
+   consts = [c for c, used in zip(consts, used_consts) if used]
+-  out_zeros = map(op.not_, out_nzs)
++  out_zeros = out_nzs
+   auxs = tuple(aux.unflatten() for aux in auxs)
+   return out_primals, out_zeros, jaxpr, consts, *auxs
+ 

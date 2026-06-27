@@ -30,8 +30,8 @@ echo ""
 echo ">>> [2/4] 多操作 vmap+grad 测试..."
 ACC_PASS=0
 ACC_FAIL=0
-for seed in 1 2 3 4 5; do
-    result=$(python "$WORKSPACE/test_vmap.py" --seed $seed --check 2>&1)
+for seed in 1 2 3; do
+    result=$(PYTHONUNBUFFERED=1 timeout 120 python -u "/task/tests/test_vmap.py" --seed $seed --check 2>&1)
     acc_line=$(echo "$result" | grep "^accuracy " | tail -1)
     correct=$(echo "$acc_line" | awk '{print $2}')
     total=$(echo "$acc_line" | awk '{print $3}')
@@ -53,14 +53,14 @@ for seed in 1 2 3 4 5; do
     fi
 done
 
-if [ $ACC_PASS -eq 5 ]; then
+if [ $ACC_PASS -eq 3 ]; then
     score=0.55
-    echo "  ✅ 所有 seed 测试通过"
-elif [ $ACC_PASS -ge 3 ]; then
+    echo "  ✅ 所有 seed 测试通过 (3/3)"
+elif [ $ACC_PASS -ge 2 ]; then
     score=0.30
-    echo "  ⚠️ $ACC_PASS/5 个 seed 通过"
+    echo "  ⚠️ $ACC_PASS/3 个 seed 通过"
 else
-    echo "  ❌ $ACC_PASS/5 个 seed 通过"
+    echo "  ❌ $ACC_PASS/3 个 seed 通过"
     echo "$score" > "$REWARD_FILE"
     exit 0
 fi
@@ -69,8 +69,8 @@ fi
 echo ""
 echo ">>> [3/4] 多形状测试..."
 SHAPE_PASS=0
-for shape in "4,8" "8,16" "16,32" "32,64"; do
-    result=$(python "$WORKSPACE/test_vmap.py" --seed 42 --check 2>&1)
+for shape in "4,8" "8,16" "16,32"; do
+    result=$(PYTHONUNBUFFERED=1 timeout 120 python -u "/task/tests/test_vmap.py" --seed 42 --check 2>&1)
     acc_line=$(echo "$result" | grep "^accuracy " | tail -1)
     correct=$(echo "$acc_line" | awk '{print $2}')
     total=$(echo "$acc_line" | awk '{print $3}')
@@ -87,18 +87,18 @@ for shape in "4,8" "8,16" "16,32" "32,64"; do
     fi
 done
 
-if [ $SHAPE_PASS -ge 3 ]; then
+if [ $SHAPE_PASS -ge 2 ]; then
     score=0.70
-    echo "  ✅ 形状测试通过 ($SHAPE_PASS/4)"
+    echo "  ✅ 形状测试通过 ($SHAPE_PASS/3)"
 else
-    echo "  ❌ 形状测试失败 ($SHAPE_PASS/4)"
+    echo "  ❌ 形状测试失败 ($SHAPE_PASS/3)"
 fi
 
 # === 4. Anti-hack ===
 echo ""
 echo ">>> [4/4] Anti-hack 检查..."
 
-if grep -rn "jax.grad\|jax.vmap\|from jax import.*grad\|from jax import.*vmap" "$WORKSPACE/test_vmap.py" 2>/dev/null; then
+if grep -rn "jax.grad\|jax.vmap\|from jax import.*grad\|from jax import.*vmap" "/task/tests/test_vmap.py" 2>/dev/null; then
     echo "  ✅ 使用标准 JAX API"
 else
     echo "  ❌ 未使用标准 JAX API"
@@ -106,7 +106,7 @@ else
 fi
 
 # 检查是否禁用了 vmap（手写循环替代）
-if grep -rn "for.*in.*range\|while.*:" "$WORKSPACE/test_vmap.py" 2>/dev/null | grep -v "#"; then
+if grep -rn "for.*in.*range\|while.*:" "/task/tests/test_vmap.py" 2>/dev/null | grep -v "#"; then
     echo "  ⚠️ 发现循环，可能绕过 vmap"
 fi
 

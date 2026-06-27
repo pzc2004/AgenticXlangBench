@@ -1,11 +1,11 @@
 --- a/jax/_src/lax/lax.py
 +++ b/jax/_src/lax/lax.py
-@@ -6533,7 +6533,7 @@
-   if _is_ragged_contracting(batched_args[0].ndim - 1,
-                             ragged_dot_dimension_numbers):
-     result_batch_dim += 1
--  return batched_out, result_batch_dim
-+  return batched_out, result_batch_dim + 1
+@@ -7879,7 +7879,7 @@
+ 
+   out = reshape(operand, operand.shape[:1] + new_sizes, dimensions,
+                 out_sharding=sharding)
+-  return out, 0
++  return out, 1
  
  
- def _ragged_dot_general_sharding_rule(
+ def _reshape_lower(ctx, x, new_sizes, dimensions, sharding):

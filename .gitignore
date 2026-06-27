@@ -1,3 +1,7 @@
+# patch 生成临时目录
+.decoys/
+.work/
+
 # 运行时产物
 trajectories/
 /logs/

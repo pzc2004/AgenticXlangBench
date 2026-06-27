@@ -33,8 +33,9 @@ python test_vmap.py
    ```
 5. **验证修复**:运行测试确认修复成功
    ```bash
-   bash /task/tests/test.sh
+   grade
    ```
+   这会输出 0-1 的总分。**目标是 1.0 满分:只要分数没到 1.0,就说明还有 batching rule bug 没修干净,请继续逐操作对比定位、修复,直到分数无法再提高,不要在中途分数停手。**
 6. **检查分数**:测试会输出 0-1 的分数。**分数 ≥ 0.6 才算通过。**
 
 ## 约束条件
@@ -47,15 +48,14 @@ python test_vmap.py
 
 ## 文件说明
 
-- `/workspace/test_vmap.py` — 测试脚本
-- `/task/tests/test.sh` — 测试脚本(跑完后输出 0-1 分数)
+- `/workspace/test_vmap.py` — 开发自测脚本 stub
 - `/build/jax/` — JAX 源码
 
 ## 运行环境
 
 - JAX(从源码安装)
-- Python 3.11+
+- Python 3.12+
 
 ## 验收标准
 
-运行 `/task/tests/test.sh`,分数 ≥ 0.6 视为通过。
+运行 `grade`,分数 ≥ 0.6 视为通过。
