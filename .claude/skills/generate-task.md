@@ -258,6 +258,21 @@ stats_x2 -= c_loss * gamma * (c_h - mean) * rstd;  // 应该是 +=
 | ⭐⭐ | 符号翻转 | 有迹可循,对比即可发现 |
 | ⭐ | 添加多余代码 | 最容易发现和删除 |
 
+**实测修复率(task1, kimi seed42, reward 0.98, 22/35 修对)** —— 给上面星级一个经验锚点:
+
+| bug 类型 | 修复率 | 解读 |
+|---|---|---|
+| 激活/Dropout 数值(`*0.9`/`+0.01`/`x_cube`) | ~100% | **免费分**:有可见可疑常量,一波 grep 全清,几乎不贡献难度 |
+| 数值缩放(`*0.95`/`*0.8`) | 100% | 同上 |
+| 条件触发(符号翻转 / eps 放大) | ~80% | 能 grep 到的会修,藏在冷门算子里的会漏 |
+| 跨 kernel(`_ln_flag`) | ~100% | kimi 能跟标志位,没想象中难 |
+| **删除型 `__syncthreads`** | **~19%(3/16)** | **难度主引擎**:只修对"主战场算子(LN backward)"里位置明显的;**SoftMax / GroupNorm 的删除型全漏** |
+
+**关键教训**(调控难度时直接照用):
+- **删除型是唯一真正拉开难度的类型**,但仅当它落在 agent **必看的主算子之外**(如 SoftMax/GN)才漏修;放在 agent 反复试错的算子(LN)里会被顺手修掉。
+- 数值/常量型修复率近 100% → **占步数但不构成难度**,适合做"基底分 + 消耗注意力",别指望它拉难度。
+- **隐形难度陷阱**:删除型大量漏修、reward 却仍 0.98 → test 对这些 race 命中不足,等于"难且测不出"。加难度时**必须同步加强 test 对删除型的带电命中**,否则白注入(见 calibrate-task.md Step 4 隐形难度警告 + `analyze_trajectory.py`)。
+
 #### 实战组合建议
 
 ```
@@ -462,6 +477,7 @@ task/
     ├── solve.sh / oracle.sh          ← 修复 / 双向验证
     └── oracle_per_bug.py             ← 逐 bug 验证(秒级迭代任务才用,见教训 20)
 run.sh / calibrate.sh                 ← 运行 / 校准(模板见下文)
+analyze_trajectory.py                 ← 轨迹分析(消费 trajectories/,出修对/漏修/难度报告)
 ```
 
 **引用索引:每个环节抄哪个文件、改哪几处**
@@ -477,6 +493,7 @@ run.sh / calibrate.sh                 ← 运行 / 校准(模板见下文)
 | per-bug 验证 | `solution/oracle_per_bug.py` | 仅秒级迭代任务用;编译型跳过(教训 20) |
 | 分项 + 带电 test | `tests/test.sh` | **看结构**(分项给分/带电检查/reward.txt/HACK 减半),检查项按本题重写(教训 19) |
 | 判分防读 | `environment/grade.c` + Dockerfile 层 | 照抄,见 `anti-hack.md` 第 8 条 |
+| 轨迹分析 | `solution/analyze_trajectory.py` | 照抄,`--bugs` 指向本题 BUGS;`classify_bug` 按本题模式微调 |
 | 运行 / 校准 | `run.sh` / `calibrate.sh` | 见下文模板,改任务名/镜像名 |
 
 > 维护约定:task1/task4 兼任"活样例",其脚本须保持**通用骨架与任务特有内容(具体 bug 片段)分离清晰**,不要塞实验性改动。

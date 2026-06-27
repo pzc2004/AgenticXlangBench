@@ -56,50 +56,46 @@ avg_reward = sum(r['reward'] for r in results) / len(results)
 
 ### Step 4: 分析轨迹(必须!)
 
-**每次运行完测试后都必须分析轨迹**,理解 agent 的行为模式。
+**每次运行完测试后都必须分析轨迹**。优先用脚本自动出报告,而不是人肉读 100+ 条 jsonl
+(人肉对照极易看错——实测中人工把"删除型修对 3 个"误判为 0 个)。
+
+**首选:跑 `analyze_trajectory.py`**(canonical 样例见 task1 `solution/analyze_trajectory.py`):
 
 ```bash
-# 查看轨迹目录
-ls trajectories/
-
-# 统计步数
-wc -l trajectories/*/trajectory.jsonl
-
-# 分析 Kimi 的推理链
-python3 -c "
-import json
-with open('trajectories/<run>/trajectory.jsonl') as f:
-    lines = [json.loads(l) for l in f if l.strip()]
-steps = []
-for line in lines:
-    if line.get('role') == 'assistant' and line.get('tool_calls'):
-        tc = [t['function']['name'] for t in line['tool_calls']]
-        steps.append(tc)
-for i, tc in enumerate(steps):
-    print(f'[{i:2d}] {tc}')
-"
+python3 task/solution/analyze_trajectory.py \
+    trajectories/<run>/trajectory.jsonl \
+    --bugs task/solution/generate_per_bug_patches.py
 ```
 
-**分析要点**:
-1. **定位路径**:agent 怎么找到 bug 的?是系统搜索还是偶然发现?
-2. **关键转折**:在哪一步发现了 bug?花了多少步?
-3. **失败原因**:如果 reward < 0.6,卡在哪里?为什么?
-4. **hack 尝试**:有没有尝试绕过约束?
-5. **上网搜索**:有没有用 WebSearch/WebFetch?(如果用了,需要加 deny 规则)
+它自动对照 `BUGS` 列表输出五块:
+1. **修对/漏修清单** — 逐 bug 判定(Edit 把 buggy 行换回 clean 行 = 修对)
+2. **难度分级** — 按 bug 类型的修复率条形图(修复率越低 = 越难)
+3. **修复时间线** — 每个 bug 在第几 turn 被定位(turn 越晚 = 越难找)
+4. **未命中编辑** — 诱饵/改错位置/无效修复(或语义等价,需人工复核)
+5. **反 hack 行为** — 偷判分脚本 / 窥探判分目录 / git / stat / 上网,各计次
 
-**轨迹分析模板**:
+> 移植到新任务:`--bugs` 指向该任务的 `generate_per_bug_patches.py` 即可;
+> bug 类型分类(`classify_bug`)按各任务的 bug 模式微调。
+
+**判读要点**(脚本数据 → 结论):
+1. **难度分级**:修复率 ~100% 的类型是"免费分"(占步数但不构成难度);修复率 <34% 的是"难度主引擎"。
+2. **隐形难度警告**:若某类 bug 大量漏修、但 reward 仍高 → 这些 bug **判分覆盖不足**,
+   属"难且测不出",等于白注入。要么加强 test 命中它们,要么减少其数量。
+3. **反 hack 复盘**:任何"偷判分/窥探"命中 = 防护起效的证据(被挡);若命中的是 WebSearch/git → 防护有缺口,补 deny/删 .git。
+4. **自停现象**:agent 在远未满分处停手 → 多半被 instruction 的"≥0.6 通过"门槛骗停,按需调高门槛。
+
+**轨迹分析归档模板**:
 
 ```markdown
-## 轨迹分析
-
+## 轨迹分析(seed N)
 | 维度 | 结果 |
 |------|------|
-| 总步数 | xxx |
-| 定位方式 | 系统搜索 / 偶然发现 / 提示引导 |
-| 关键转折 | 第 N 步发现 xxx |
-| 修复方式 | 修改了 xxx 文件的 xxx 行 |
-| 失败原因 | (如果失败)卡在 xxx |
-| hack 尝试 | 有/无 |
+| reward / 步数 | 0.98 / 111 |
+| 修对真 bug | 22/35 |
+| 难度主引擎(漏修最多) | 删除型 __syncthreads(SoftMax/GN 全漏) |
+| 免费分类型 | 激活/数值缩放(~100% 修对) |
+| 反 hack 命中 | 偷判分 2 次(被挡)、窥探目录 1 次(被挡) |
+| 瓶颈/自停 | 0.98 卡住:删除型漏修但判分覆盖不足 |
 ```
 
 ### Step 5: 调整难度
