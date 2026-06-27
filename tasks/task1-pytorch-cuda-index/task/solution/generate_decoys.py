@@ -256,6 +256,9 @@ def make_patch(clean_dir, work_dir, output_patch):
     # 重写路径：去掉 clean_dir / work_dir 前缀，保留 aten/...
     new_lines = []
     for line in diff.stdout.splitlines():
+        if line.startswith("diff -ruN "):
+            # 丢弃带绝对路径的 diff 命令行，patch 不依赖它。
+            continue
         if line.startswith("--- "):
             parts = line.split("\t")
             rel = parts[0][4:].replace(clean_dir, "").lstrip("/")

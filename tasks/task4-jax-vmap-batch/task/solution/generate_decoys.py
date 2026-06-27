@@ -169,6 +169,9 @@ def main():
     lines = diff.stdout.splitlines()
     new_lines = []
     for line in lines:
+        if line.startswith("diff -ruN "):
+            # 丢弃带绝对路径的 diff 命令行，patch 不依赖它。
+            continue
         if line.startswith("--- "):
             parts = line.split("\t")
             path = parts[0][4:]

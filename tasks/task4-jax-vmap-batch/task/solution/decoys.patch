@@ -1,4 +1,4 @@
-diff -ruN /tmp/task4_patch_root/clean/jax/_src/interpreters/ad.py /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task4-jax-vmap-batch/task/solution/.decoys_work/jax/_src/interpreters/ad.py
+diff -ruN a/jax/_src/interpreters/ad.py b/jax/_src/interpreters/ad.py
 --- jax/_src/interpreters/ad.py	2026-06-26 23:47:09.953138865 +0800
 +++ jax/_src/interpreters/ad.py	2026-06-27 01:26:34.847189504 +0800
 @@ -94,6 +94,9 @@
@@ -21,7 +21,7 @@ diff -ruN /tmp/task4_patch_root/clean/jax/_src/interpreters/ad.py /workspace/wor
    source_info = source_info_util.current()
    with core.take_current_trace() as parent_trace:
      tangent_trace = pe.DynamicJaxprTrace(debug_info, auto_dce=True)
-diff -ruN /tmp/task4_patch_root/clean/jax/_src/interpreters/batching.py /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task4-jax-vmap-batch/task/solution/.decoys_work/jax/_src/interpreters/batching.py
+diff -ruN a/jax/_src/interpreters/batching.py b/jax/_src/interpreters/batching.py
 --- jax/_src/interpreters/batching.py	2026-06-26 23:47:09.950138898 +0800
 +++ jax/_src/interpreters/batching.py	2026-06-27 01:26:34.843189551 +0800
 @@ -226,7 +226,13 @@
@@ -69,7 +69,7 @@ diff -ruN /tmp/task4_patch_root/clean/jax/_src/interpreters/batching.py /workspa
    if all(d is None for d in batch_dims):
      return prim.bind(*batched_args, axes=axes, **params), None
    def out_axis(axes, axis):
-diff -ruN /tmp/task4_patch_root/clean/jax/_src/lax/lax.py /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task4-jax-vmap-batch/task/solution/.decoys_work/jax/_src/lax/lax.py
+diff -ruN a/jax/_src/lax/lax.py b/jax/_src/lax/lax.py
 --- jax/_src/lax/lax.py	2026-06-26 23:47:09.955138843 +0800
 +++ jax/_src/lax/lax.py	2026-06-27 01:26:34.862189331 +0800
 @@ -7143,6 +7143,10 @@
@@ -103,7 +103,7 @@ diff -ruN /tmp/task4_patch_root/clean/jax/_src/lax/lax.py /workspace/work/PKU/ex
    operand, = batched_args
    bdim, = batch_dims
    perm = (bdim,) + tuple(i if i < bdim else i+1 for i in permutation)
-diff -ruN /tmp/task4_patch_root/clean/jax/_src/lax/slicing.py /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task4-jax-vmap-batch/task/solution/.decoys_work/jax/_src/lax/slicing.py
+diff -ruN a/jax/_src/lax/slicing.py b/jax/_src/lax/slicing.py
 --- jax/_src/lax/slicing.py	2026-06-26 23:47:09.958138811 +0800
 +++ jax/_src/lax/slicing.py	2026-06-27 01:26:34.869189251 +0800
 @@ -1448,6 +1448,9 @@

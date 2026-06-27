@@ -121,9 +121,7 @@ Kimi 的调试路径：
 
 **关键发现**：Kimi 通过 grep 搜索可疑模式（如 `_ln_flag`、`* 0.95`）快速定位 bug，然后用"霰弹枪策略"全部修掉。
 
-## 宿主机与容器目录映射
-
-### 宿主机目录结构
+## 目录结构与挂载
 
 ```
 agentic-xlang-bugfix/                          ← Docker build context
@@ -132,11 +130,11 @@ agentic-xlang-bugfix/                          ← Docker build context
     ├── run.sh                                 ← 单次运行
     ├── calibrate.sh                           ← 多次校准
     ├── task/
-    │   ├── workspace/                         ← 挂载到容器 /workspace
+    │   ├── workspace/                         ← 运行时挂载到 /workspace
     │   │   ├── train.py
     │   │   └── model.py
-    │   ├── tests/test.sh                      ← 挂载到容器 /task/tests
-    │   ├── instruction.md                     ← 挂载到容器 /task/instruction.md
+    │   ├── tests/test.sh                      ← 运行时挂载到 /task/tests
+    │   ├── instruction.md                     ← 运行时挂载到 /task/instruction.md
     │   ├── environment/
     │   │   ├── Dockerfile
     │   │   └── Dockerfile.base
@@ -149,7 +147,7 @@ agentic-xlang-bugfix/                          ← Docker build context
 
 ### Docker run 挂载关系
 
-| 容器内路径 | 宿主机来源 | 挂载方式 |
+| 运行时路径 | 来源 | 挂载方式 |
 |---|---|---|
 | `/workspace/` | `task/workspace/` | 只读 |
 | `/task/tests/test.sh` | `task/tests/test.sh` | 只读 |
@@ -160,7 +158,7 @@ agentic-xlang-bugfix/                          ← Docker build context
 ### Docker 构建命令
 
 ```bash
-cd ~/data/PKU/exploitbench/task/agentic-xlang-bugfix
+cd <项目路径>
 
 # 构建 fat base（一次性，1-2 小时）
 DOCKER_BUILDKIT=1 docker build \

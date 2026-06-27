@@ -166,7 +166,7 @@ docker build --no-cache -t task1 \
 
 **流程**:
 ```
-1. 启动容器 (挂载 workspace/tests/solution)
+1. 启动 Docker 运行环境 (挂载 workspace/tests/solution)
     ↓
 2. 运行 test.sh (buggy 版本)
     ↓
@@ -190,7 +190,7 @@ cd tasks/task1-pytorch-cuda-index
 ```
 1. 生成 kimi_config.toml (API key + 权限规则)
     ↓
-2. 启动容器 (挂载 workspace/tests/instruction)
+2. 启动 Docker 运行环境 (挂载 workspace/tests/instruction)
     ↓
 3. 运行 kimi -p "任务 prompt"
     ↓
@@ -198,7 +198,7 @@ cd tasks/task1-pytorch-cuda-index
     ↓
 5. docker commit (保存修复状态)
     ↓
-6. 在快照容器中运行 test.sh
+6. 在快照镜像中运行 test.sh
     ↓
 7. 输出 result.jsonl (reward/turns/tool_calls)
 ```

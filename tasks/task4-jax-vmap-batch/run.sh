@@ -15,7 +15,7 @@ TASK_DIR="$SCRIPT_DIR/task"
 RUN_ID="$(date +%Y%m%d_%H%M%S)_${MODEL_SAFE}_seed${SEED}"
 TRAJ_DIR="$SCRIPT_DIR/trajectories/$RUN_ID"
 mkdir -p "$TRAJ_DIR"
-chmod 777 "$TRAJ_DIR"  # 容器内 agent(uid 1500) 需要写 /trajectories
+chmod 777 "$TRAJ_DIR"  # 镜像内 agent(uid 1500) 需要写 /trajectories
 
 TASK_NAME="$(basename "$SCRIPT_DIR")"
 

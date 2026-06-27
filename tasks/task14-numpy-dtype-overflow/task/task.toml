@@ -1,7 +1,7 @@
 version = "1.0"
 
 [metadata]
-author = "pzc2004"
+author = "AgenticXlangBench"
 difficulty = "hard"
 category = "cross-lang-bugfix"
 tags = ["numpy", "dtype", "type-promotion", "overflow", "int8", "float16", "multi-bug"]

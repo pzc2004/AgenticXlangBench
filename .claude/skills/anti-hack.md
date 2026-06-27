@@ -143,9 +143,9 @@ setgid(0); setuid(0);                       // 提权
 编译: `gcc -O2 -o /usr/local/bin/grade grade.c && chmod 4755 /usr/local/bin/grade`
 
 **run.sh** 配套改动:
-- agent 容器: `docker run --user 1500 -e HOME=/home/agent`,**去掉 tests 挂载**,
+- agent 运行环境: `docker run --user 1500 -e HOME=/home/agent`,**去掉 tests 挂载**,
   config 挂到 `/home/agent/.kimi-code/config.toml`
-- **最终评分容器必须显式 `--user 0`**(否则 `docker commit` 继承 agent 的 USER=1500,
+- **最终评分镜像必须显式 `--user 0`**(否则 `docker commit` 继承 agent 的 USER=1500,
   非 root 读不到 /opt/judge/test.sh → reward 恒为 0.0,这是个易踩的坑)
 
 **instruction.md**: 把 `bash /task/tests/test.sh` 全改为 `grade`,并说明"只返回总分,

@@ -1,4 +1,4 @@
-diff -ruN /tmp/task1_bugs_patch_work/decoys/aten/src/ATen/native/cuda/ActivationEluKernel.cu /tmp/task1_bugs_patch_work/buggy/aten/src/ATen/native/cuda/ActivationEluKernel.cu
+diff -ruN a/aten/src/ATen/native/cuda/ActivationEluKernel.cu b/aten/src/ATen/native/cuda/ActivationEluKernel.cu
 --- aten/src/ATen/native/cuda/ActivationEluKernel.cu	2026-06-27 08:01:10.226736364 +0800
 +++ aten/src/ATen/native/cuda/ActivationEluKernel.cu	2026-06-27 08:01:10.291735607 +0800
 @@ -40,7 +40,7 @@
@@ -10,7 +10,7 @@ diff -ruN /tmp/task1_bugs_patch_work/decoys/aten/src/ATen/native/cuda/Activation
                               : std::expm1(aop * negiptcoef) * negcoef;
              });
        });
-diff -ruN /tmp/task1_bugs_patch_work/decoys/aten/src/ATen/native/cuda/ActivationGeluKernel.cu /tmp/task1_bugs_patch_work/buggy/aten/src/ATen/native/cuda/ActivationGeluKernel.cu
+diff -ruN a/aten/src/ATen/native/cuda/ActivationGeluKernel.cu b/aten/src/ATen/native/cuda/ActivationGeluKernel.cu
 --- aten/src/ATen/native/cuda/ActivationGeluKernel.cu	2026-06-27 08:01:10.266735898 +0800
 +++ aten/src/ATen/native/cuda/ActivationGeluKernel.cu	2026-06-27 08:01:10.293735584 +0800
 @@ -29,8 +29,8 @@
@@ -24,7 +24,7 @@ diff -ruN /tmp/task1_bugs_patch_work/decoys/aten/src/ATen/native/cuda/Activation
          return opmath_t(0.5) * static_cast<opmath_t>(x) * (opmath_t(1) + c10::cuda::compat::tanh(inner));
        });
      });
-diff -ruN /tmp/task1_bugs_patch_work/decoys/aten/src/ATen/native/cuda/ActivationHardswishKernel.cu /tmp/task1_bugs_patch_work/buggy/aten/src/ATen/native/cuda/ActivationHardswishKernel.cu
+diff -ruN a/aten/src/ATen/native/cuda/ActivationHardswishKernel.cu b/aten/src/ATen/native/cuda/ActivationHardswishKernel.cu
 --- aten/src/ATen/native/cuda/ActivationHardswishKernel.cu	2026-06-27 08:01:10.226736364 +0800
 +++ aten/src/ATen/native/cuda/ActivationHardswishKernel.cu	2026-06-27 08:01:10.293735584 +0800
 @@ -30,7 +30,7 @@
@@ -36,7 +36,7 @@ diff -ruN /tmp/task1_bugs_patch_work/decoys/aten/src/ATen/native/cuda/Activation
      });
    });
  }
-diff -ruN /tmp/task1_bugs_patch_work/decoys/aten/src/ATen/native/cuda/ActivationLeakyReluKernel.cu /tmp/task1_bugs_patch_work/buggy/aten/src/ATen/native/cuda/ActivationLeakyReluKernel.cu
+diff -ruN a/aten/src/ATen/native/cuda/ActivationLeakyReluKernel.cu b/aten/src/ATen/native/cuda/ActivationLeakyReluKernel.cu
 --- aten/src/ATen/native/cuda/ActivationLeakyReluKernel.cu	2026-06-27 08:01:10.266735898 +0800
 +++ aten/src/ATen/native/cuda/ActivationLeakyReluKernel.cu	2026-06-27 08:01:10.291735607 +0800
 @@ -34,7 +34,7 @@
@@ -48,7 +48,7 @@ diff -ruN /tmp/task1_bugs_patch_work/decoys/aten/src/ATen/native/cuda/Activation
          });
        });
  }
-diff -ruN /tmp/task1_bugs_patch_work/decoys/aten/src/ATen/native/cuda/ActivationPreluKernel.cu /tmp/task1_bugs_patch_work/buggy/aten/src/ATen/native/cuda/ActivationPreluKernel.cu
+diff -ruN a/aten/src/ATen/native/cuda/ActivationPreluKernel.cu b/aten/src/ATen/native/cuda/ActivationPreluKernel.cu
 --- aten/src/ATen/native/cuda/ActivationPreluKernel.cu	2026-06-27 08:01:10.226736364 +0800
 +++ aten/src/ATen/native/cuda/ActivationPreluKernel.cu	2026-06-27 08:01:10.293735584 +0800
 @@ -27,7 +27,7 @@
@@ -60,7 +60,7 @@ diff -ruN /tmp/task1_bugs_patch_work/decoys/aten/src/ATen/native/cuda/Activation
        });
    });
  }
-diff -ruN /tmp/task1_bugs_patch_work/decoys/aten/src/ATen/native/cuda/ActivationSiluKernel.cu /tmp/task1_bugs_patch_work/buggy/aten/src/ATen/native/cuda/ActivationSiluKernel.cu
+diff -ruN a/aten/src/ATen/native/cuda/ActivationSiluKernel.cu b/aten/src/ATen/native/cuda/ActivationSiluKernel.cu
 --- aten/src/ATen/native/cuda/ActivationSiluKernel.cu	2026-06-27 08:01:10.266735898 +0800
 +++ aten/src/ATen/native/cuda/ActivationSiluKernel.cu	2026-06-27 08:01:10.291735607 +0800
 @@ -35,7 +35,7 @@
@@ -72,7 +72,7 @@ diff -ruN /tmp/task1_bugs_patch_work/decoys/aten/src/ATen/native/cuda/Activation
          });
        });
  }
-diff -ruN /tmp/task1_bugs_patch_work/decoys/aten/src/ATen/native/cuda/Dropout.cu /tmp/task1_bugs_patch_work/buggy/aten/src/ATen/native/cuda/Dropout.cu
+diff -ruN a/aten/src/ATen/native/cuda/Dropout.cu b/aten/src/ATen/native/cuda/Dropout.cu
 --- aten/src/ATen/native/cuda/Dropout.cu	2026-06-27 08:01:10.264735921 +0800
 +++ aten/src/ATen/native/cuda/Dropout.cu	2026-06-27 08:01:10.291735607 +0800
 @@ -74,7 +74,7 @@
@@ -84,7 +84,7 @@ diff -ruN /tmp/task1_bugs_patch_work/decoys/aten/src/ATen/native/cuda/Dropout.cu
  
    float4 rand;
  
-diff -ruN /tmp/task1_bugs_patch_work/decoys/aten/src/ATen/native/cuda/Normalization.cu /tmp/task1_bugs_patch_work/buggy/aten/src/ATen/native/cuda/Normalization.cu
+diff -ruN a/aten/src/ATen/native/cuda/Normalization.cu b/aten/src/ATen/native/cuda/Normalization.cu
 --- aten/src/ATen/native/cuda/Normalization.cu	2026-06-27 08:01:10.254736038 +0800
 +++ aten/src/ATen/native/cuda/Normalization.cu	2026-06-27 08:01:10.293735584 +0800
 @@ -380,7 +380,7 @@
@@ -107,7 +107,7 @@ diff -ruN /tmp/task1_bugs_patch_work/decoys/aten/src/ATen/native/cuda/Normalizat
          };
        });
    });
-diff -ruN /tmp/task1_bugs_patch_work/decoys/aten/src/ATen/native/cuda/SoftMax.cu /tmp/task1_bugs_patch_work/buggy/aten/src/ATen/native/cuda/SoftMax.cu
+diff -ruN a/aten/src/ATen/native/cuda/SoftMax.cu b/aten/src/ATen/native/cuda/SoftMax.cu
 --- aten/src/ATen/native/cuda/SoftMax.cu	2026-06-27 08:01:10.261735956 +0800
 +++ aten/src/ATen/native/cuda/SoftMax.cu	2026-06-27 08:01:10.320735269 +0800
 @@ -243,7 +243,6 @@
@@ -164,7 +164,7 @@ diff -ruN /tmp/task1_bugs_patch_work/decoys/aten/src/ATen/native/cuda/SoftMax.cu
    return smem_cache[0];
  }
  
-diff -ruN /tmp/task1_bugs_patch_work/decoys/aten/src/ATen/native/cuda/group_norm_kernel.cu /tmp/task1_bugs_patch_work/buggy/aten/src/ATen/native/cuda/group_norm_kernel.cu
+diff -ruN a/aten/src/ATen/native/cuda/group_norm_kernel.cu b/aten/src/ATen/native/cuda/group_norm_kernel.cu
 --- aten/src/ATen/native/cuda/group_norm_kernel.cu	2026-06-27 08:01:10.251736073 +0800
 +++ aten/src/ATen/native/cuda/group_norm_kernel.cu	2026-06-27 08:01:10.295735560 +0800
 @@ -98,9 +98,9 @@
@@ -187,7 +187,7 @@ diff -ruN /tmp/task1_bugs_patch_work/decoys/aten/src/ATen/native/cuda/group_norm
  
    // Do warp reduce for the 1st 16 cols in the tile.
    T_ACC sum1 = g_shared[threadIdx.x][threadIdx.y];
-diff -ruN /tmp/task1_bugs_patch_work/decoys/aten/src/ATen/native/cuda/layer_norm_kernel.cu /tmp/task1_bugs_patch_work/buggy/aten/src/ATen/native/cuda/layer_norm_kernel.cu
+diff -ruN a/aten/src/ATen/native/cuda/layer_norm_kernel.cu b/aten/src/ATen/native/cuda/layer_norm_kernel.cu
 --- aten/src/ATen/native/cuda/layer_norm_kernel.cu	2026-06-27 08:01:10.246736131 +0800
 +++ aten/src/ATen/native/cuda/layer_norm_kernel.cu	2026-06-27 08:01:10.310735386 +0800
 @@ -97,7 +97,7 @@

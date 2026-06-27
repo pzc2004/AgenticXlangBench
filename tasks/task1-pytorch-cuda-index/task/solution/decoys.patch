@@ -1,4 +1,4 @@
-diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/clean_src/aten/src/ATen/native/cuda/ActivationEluKernel.cu /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/.decoys_work/aten/src/ATen/native/cuda/ActivationEluKernel.cu
+diff -ruN a/aten/src/ATen/native/cuda/ActivationEluKernel.cu b/aten/src/ATen/native/cuda/ActivationEluKernel.cu
 --- aten/src/ATen/native/cuda/ActivationEluKernel.cu	2026-06-19 23:58:37.000000000 +0800
 +++ aten/src/ATen/native/cuda/ActivationEluKernel.cu	2026-06-27 08:01:09.865740566 +0800
 @@ -1,3 +1,4 @@
@@ -14,7 +14,7 @@ diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1
  
  namespace at::native {
  namespace {
-diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/clean_src/aten/src/ATen/native/cuda/ActivationGeluKernel.cu /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/.decoys_work/aten/src/ATen/native/cuda/ActivationGeluKernel.cu
+diff -ruN a/aten/src/ATen/native/cuda/ActivationGeluKernel.cu b/aten/src/ATen/native/cuda/ActivationGeluKernel.cu
 --- aten/src/ATen/native/cuda/ActivationGeluKernel.cu	2026-06-19 23:58:37.000000000 +0800
 +++ aten/src/ATen/native/cuda/ActivationGeluKernel.cu	2026-06-27 08:01:09.906740089 +0800
 @@ -1,3 +1,4 @@
@@ -32,7 +32,7 @@ diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1
  
  namespace at::native {
  
-diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/clean_src/aten/src/ATen/native/cuda/ActivationHardswishKernel.cu /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/.decoys_work/aten/src/ATen/native/cuda/ActivationHardswishKernel.cu
+diff -ruN a/aten/src/ATen/native/cuda/ActivationHardswishKernel.cu b/aten/src/ATen/native/cuda/ActivationHardswishKernel.cu
 --- aten/src/ATen/native/cuda/ActivationHardswishKernel.cu	2026-06-19 23:58:37.000000000 +0800
 +++ aten/src/ATen/native/cuda/ActivationHardswishKernel.cu	2026-06-27 08:01:09.866740555 +0800
 @@ -1,3 +1,4 @@
@@ -48,7 +48,7 @@ diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1
  
  namespace at::native {
  namespace {
-diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/clean_src/aten/src/ATen/native/cuda/ActivationHardtanhKernel.cu /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/.decoys_work/aten/src/ATen/native/cuda/ActivationHardtanhKernel.cu
+diff -ruN a/aten/src/ATen/native/cuda/ActivationHardtanhKernel.cu b/aten/src/ATen/native/cuda/ActivationHardtanhKernel.cu
 --- aten/src/ATen/native/cuda/ActivationHardtanhKernel.cu	2026-06-19 23:58:37.000000000 +0800
 +++ aten/src/ATen/native/cuda/ActivationHardtanhKernel.cu	2026-06-27 08:01:09.834740927 +0800
 @@ -1,3 +1,4 @@
@@ -56,7 +56,7 @@ diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1
  #define TORCH_ASSERT_NO_OPERATORS
  #define _USE_MATH_DEFINES
  
-diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/clean_src/aten/src/ATen/native/cuda/ActivationLeakyReluKernel.cu /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/.decoys_work/aten/src/ATen/native/cuda/ActivationLeakyReluKernel.cu
+diff -ruN a/aten/src/ATen/native/cuda/ActivationLeakyReluKernel.cu b/aten/src/ATen/native/cuda/ActivationLeakyReluKernel.cu
 --- aten/src/ATen/native/cuda/ActivationLeakyReluKernel.cu	2026-06-19 23:58:37.000000000 +0800
 +++ aten/src/ATen/native/cuda/ActivationLeakyReluKernel.cu	2026-06-27 08:01:09.906740089 +0800
 @@ -1,3 +1,4 @@
@@ -74,7 +74,7 @@ diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1
  
  namespace at::native {
  namespace {
-diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/clean_src/aten/src/ATen/native/cuda/ActivationPreluKernel.cu /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/.decoys_work/aten/src/ATen/native/cuda/ActivationPreluKernel.cu
+diff -ruN a/aten/src/ATen/native/cuda/ActivationPreluKernel.cu b/aten/src/ATen/native/cuda/ActivationPreluKernel.cu
 --- aten/src/ATen/native/cuda/ActivationPreluKernel.cu	2026-06-19 23:58:37.000000000 +0800
 +++ aten/src/ATen/native/cuda/ActivationPreluKernel.cu	2026-06-27 08:01:09.866740555 +0800
 @@ -1,3 +1,4 @@
@@ -90,7 +90,7 @@ diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1
  
  namespace at::native {
  
-diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/clean_src/aten/src/ATen/native/cuda/ActivationSiluKernel.cu /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/.decoys_work/aten/src/ATen/native/cuda/ActivationSiluKernel.cu
+diff -ruN a/aten/src/ATen/native/cuda/ActivationSiluKernel.cu b/aten/src/ATen/native/cuda/ActivationSiluKernel.cu
 --- aten/src/ATen/native/cuda/ActivationSiluKernel.cu	2026-06-19 23:58:37.000000000 +0800
 +++ aten/src/ATen/native/cuda/ActivationSiluKernel.cu	2026-06-27 08:01:09.906740089 +0800
 @@ -1,3 +1,4 @@
@@ -118,7 +118,7 @@ diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1
            return x_acc / (opmath_t(1) + ::exp(-x_acc));
          });
        });
-diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/clean_src/aten/src/ATen/native/cuda/Dropout.cu /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/.decoys_work/aten/src/ATen/native/cuda/Dropout.cu
+diff -ruN a/aten/src/ATen/native/cuda/Dropout.cu b/aten/src/ATen/native/cuda/Dropout.cu
 --- aten/src/ATen/native/cuda/Dropout.cu	2026-06-19 23:58:37.000000000 +0800
 +++ aten/src/ATen/native/cuda/Dropout.cu	2026-06-27 08:01:09.904740112 +0800
 @@ -1,3 +1,4 @@
@@ -139,7 +139,7 @@ diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1
  #endif
  
  namespace at::native {
-diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/clean_src/aten/src/ATen/native/cuda/Normalization.cu /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/.decoys_work/aten/src/ATen/native/cuda/Normalization.cu
+diff -ruN a/aten/src/ATen/native/cuda/Normalization.cu b/aten/src/ATen/native/cuda/Normalization.cu
 --- aten/src/ATen/native/cuda/Normalization.cu	2026-06-19 23:58:37.000000000 +0800
 +++ aten/src/ATen/native/cuda/Normalization.cu	2026-06-27 08:01:09.896740205 +0800
 @@ -1,3 +1,4 @@
@@ -171,7 +171,7 @@ diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1
        });
      });
      return;
-diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/clean_src/aten/src/ATen/native/cuda/SoftMax.cu /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/.decoys_work/aten/src/ATen/native/cuda/SoftMax.cu
+diff -ruN a/aten/src/ATen/native/cuda/SoftMax.cu b/aten/src/ATen/native/cuda/SoftMax.cu
 --- aten/src/ATen/native/cuda/SoftMax.cu	2026-06-19 23:58:37.000000000 +0800
 +++ aten/src/ATen/native/cuda/SoftMax.cu	2026-06-27 08:01:09.901740147 +0800
 @@ -1,3 +1,4 @@
@@ -195,7 +195,7 @@ diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1
  #endif
  
  namespace at::native {
-diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/clean_src/aten/src/ATen/native/cuda/group_norm_kernel.cu /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/.decoys_work/aten/src/ATen/native/cuda/group_norm_kernel.cu
+diff -ruN a/aten/src/ATen/native/cuda/group_norm_kernel.cu b/aten/src/ATen/native/cuda/group_norm_kernel.cu
 --- aten/src/ATen/native/cuda/group_norm_kernel.cu	2026-06-19 23:58:37.000000000 +0800
 +++ aten/src/ATen/native/cuda/group_norm_kernel.cu	2026-06-27 08:01:09.893740240 +0800
 @@ -1,3 +1,4 @@
@@ -236,7 +236,7 @@ diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1
        sum1 += (dgamma == nullptr)
            ? T_ACC(0)
            : ((dy_acc * x_acc - dy_acc * static_cast<T_ACC>(mean[ng])) *
-diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/clean_src/aten/src/ATen/native/cuda/layer_norm_kernel.cu /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/.decoys_work/aten/src/ATen/native/cuda/layer_norm_kernel.cu
+diff -ruN a/aten/src/ATen/native/cuda/layer_norm_kernel.cu b/aten/src/ATen/native/cuda/layer_norm_kernel.cu
 --- aten/src/ATen/native/cuda/layer_norm_kernel.cu	2026-06-19 23:58:37.000000000 +0800
 +++ aten/src/ATen/native/cuda/layer_norm_kernel.cu	2026-06-27 08:01:09.888740299 +0800
 @@ -1,3 +1,4 @@

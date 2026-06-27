@@ -1,4 +1,4 @@
-diff -ruN /tmp/jax_bugs_patch_work/decoys/jax/_src/interpreters/ad.py /tmp/jax_bugs_patch_work/buggy/jax/_src/interpreters/ad.py
+diff -ruN a/jax/_src/interpreters/ad.py b/jax/_src/interpreters/ad.py
 --- jax/_src/interpreters/ad.py	2026-06-27 22:24:06.118432889 +0800
 +++ jax/_src/interpreters/ad.py	2026-06-27 22:24:06.177432240 +0800
 @@ -321,8 +321,8 @@
@@ -21,7 +21,7 @@ diff -ruN /tmp/jax_bugs_patch_work/decoys/jax/_src/interpreters/ad.py /tmp/jax_b
    auxs = tuple(aux.unflatten() for aux in auxs)
    return out_primals, out_zeros, jaxpr, consts, *auxs
  
-diff -ruN /tmp/jax_bugs_patch_work/decoys/jax/_src/interpreters/batching.py /tmp/jax_bugs_patch_work/buggy/jax/_src/interpreters/batching.py
+diff -ruN a/jax/_src/interpreters/batching.py b/jax/_src/interpreters/batching.py
 --- jax/_src/interpreters/batching.py	2026-06-27 22:24:06.122432845 +0800
 +++ jax/_src/interpreters/batching.py	2026-06-27 22:24:06.173432284 +0800
 @@ -160,7 +160,7 @@
@@ -119,7 +119,7 @@ diff -ruN /tmp/jax_bugs_patch_work/decoys/jax/_src/interpreters/batching.py /tmp
    else:
      return moveaxis(x, bdim, 0)
  
-diff -ruN /tmp/jax_bugs_patch_work/decoys/jax/_src/lax/lax.py /tmp/jax_bugs_patch_work/buggy/jax/_src/lax/lax.py
+diff -ruN a/jax/_src/lax/lax.py b/jax/_src/lax/lax.py
 --- jax/_src/lax/lax.py	2026-06-27 22:24:06.127432790 +0800
 +++ jax/_src/lax/lax.py	2026-06-27 22:24:06.221431757 +0800
 @@ -5846,7 +5846,7 @@
@@ -186,7 +186,7 @@ diff -ruN /tmp/jax_bugs_patch_work/decoys/jax/_src/lax/lax.py /tmp/jax_bugs_patc
                           jaxpr=jaxpr), new_operand_bdims
    else:
      raise NotImplementedError  # loop and stack
-diff -ruN /tmp/jax_bugs_patch_work/decoys/jax/_src/lax/slicing.py /tmp/jax_bugs_patch_work/buggy/jax/_src/lax/slicing.py
+diff -ruN a/jax/_src/lax/slicing.py b/jax/_src/lax/slicing.py
 --- jax/_src/lax/slicing.py	2026-06-27 22:24:06.134432713 +0800
 +++ jax/_src/lax/slicing.py	2026-06-27 22:24:06.229431668 +0800
 @@ -2199,10 +2199,10 @@

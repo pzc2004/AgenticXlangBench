@@ -75,7 +75,7 @@ python3 /task/solution/inject_bug.py --reverse
 如果修改了某个 bug 的定义（`generate_per_bug_patches.py` 中的 `BUGS` 列表），需要重新生成 patch：
 
 ```bash
-# 1. 启动 fat-base 容器（内含 clean JAX 源码）
+# 1. 启动 fat-base 镜像（内含 clean JAX 源码）
 docker run -d -v $(pwd)/tasks/task4-jax-vmap-batch/task/solution:/task/solution \
   --name task4_gen jax-fat-base sleep 3600
 
@@ -117,11 +117,11 @@ agentic-xlang-bugfix/                          ← Docker build context
     ├── calibrate.sh                           ← 多次校准
     ├── trajectories/                          ← 轨迹输出
     └── task/
-        ├── workspace/                         ← 挂载到容器 /workspace
+        ├── workspace/                         ← 运行时挂载到 /workspace
         │   └── test_vmap.py
         ├── tests/test.sh                      ← 判分脚本，build 时复制到 /opt/judge
         ├── tests/test_vmap.py                 ← 真实测试，build 时复制到 /opt/judge
-        ├── instruction.md                     ← 挂载到容器 /task/instruction.md
+        ├── instruction.md                     ← 运行时挂载到 /task/instruction.md
         ├── environment/
         │   ├── Dockerfile
         │   ├── Dockerfile.base
@@ -139,7 +139,7 @@ agentic-xlang-bugfix/                          ← Docker build context
             └── analyze_trajectory.py          ← 轨迹分析
 ```
 
-### Docker run 挂载关系（agent 容器）
+### Docker run 挂载关系（agent 运行时）
 
 | 容器路径 | 来源 | 挂载方式 | 说明 |
 |---|---|---|---|
@@ -171,7 +171,7 @@ DOCKER_BUILDKIT=1 docker build \
 
 ### 测试命令
 
-Agent 容器：
+Agent 运行时：
 
 ```bash
 # agent 只能执行 grade 拿总分

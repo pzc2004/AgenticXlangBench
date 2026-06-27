@@ -49,6 +49,9 @@ def main():
     # 路径重写：保留 aten/... （apply 时 -p0，patch_base=/build/pytorch）
     new_lines = []
     for line in diff.stdout.splitlines():
+        if line.startswith("diff -ruN "):
+            # `diff -ruN` 行只包含生成机的绝对路径，patch 不使用它；丢弃以免暴露本地环境。
+            continue
         if line.startswith("--- ") or line.startswith("+++ "):
             parts = line.split("\t")
             prefix = parts[0][:4]

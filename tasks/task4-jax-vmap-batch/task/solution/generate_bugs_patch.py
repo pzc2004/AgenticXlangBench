@@ -58,6 +58,9 @@ def main():
     # Rewrite paths: strip the absolute prefix and keep jax/...
     patch_lines = []
     for line in diff.stdout.decode(errors="replace").splitlines():
+        if line.startswith("diff -ruN "):
+            # 丢弃带绝对路径的 diff 命令行，patch 不依赖它。
+            continue
         if line.startswith("--- ") or line.startswith("+++ "):
             parts = line.split("\t")
             prefix = parts[0][:4]

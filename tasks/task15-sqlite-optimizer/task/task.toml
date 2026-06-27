@@ -1,7 +1,7 @@
 version = "1.0"
 
 [metadata]
-author = "pzc2004"
+author = "AgenticXlangBench"
 difficulty = "hard"
 category = "cross-lang-bugfix"
 tags = ["sqlite", "query-optimizer", "index-selection", "join", "where-clause", "multi-bug"]
