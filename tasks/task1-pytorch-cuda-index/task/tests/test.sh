@@ -67,10 +67,10 @@ else: print('FAIL')
 done
 
 if [ $FWD_PASS -eq 5 ]; then
-    score=$(python -c "print(f'{$score + 0.20:.2f}')")
+    score=$(python -c "print(f'{$score + 0.15:.2f}')")
     echo "  ✅ 全部通过"
 elif [ $FWD_PASS -ge 3 ]; then
-    score=$(python -c "print(f'{$score + 0.10:.2f}')")
+    score=$(python -c "print(f'{$score + 0.07:.2f}')")
     echo "  ⚠️ $FWD_PASS/5 通过"
 else
     echo "  ❌ $FWD_PASS/5 通过"
@@ -216,10 +216,10 @@ else: print('FAIL')
 done
 
 if [ $GRAD_PASS -eq 5 ]; then
-    score=$(python -c "print(f'{$score + 0.20:.2f}')")
+    score=$(python -c "print(f'{$score + 0.15:.2f}')")
     echo "  ✅ 全部通过"
 elif [ $GRAD_PASS -ge 3 ]; then
-    score=$(python -c "print(f'{$score + 0.10:.2f}')")
+    score=$(python -c "print(f'{$score + 0.07:.2f}')")
     echo "  ⚠️ $GRAD_PASS/5 通过"
 else
     echo "  ❌ $GRAD_PASS/5 通过"
@@ -228,13 +228,96 @@ else
 fi
 
 echo ""
-echo ">>> [6/7] 性能检查..."
+echo ">>> [6/8] Kernel 级带电检查（GELU-tanh / softmax / BN / Dropout）..."
+KPASS=0
+KTOTAL=6
+
+# K1: GELU tanh approximate（触发 Gelu tanh 路径 bug）
+r=$(python -c "
+import torch, torch.nn.functional as F
+torch.manual_seed(0); x=torch.randn(64,512)
+yc=F.gelu(x,approximate='tanh'); yg=F.gelu(x.cuda(),approximate='tanh')
+d=(yc-yg.cpu()).abs().max().item()/max(yc.abs().max().item(),1e-8)
+print('PASS' if d<1e-3 else f'FAIL rel={d:.5f}')
+" 2>&1)
+echo "  GELU-tanh: $r"; echo "$r" | grep -q PASS && KPASS=$((KPASS+1))
+
+# K2: 4D spatial softmax 前向+反向（dim=1, inner_size>1）
+r=$(python -c "
+import torch, torch.nn.functional as F
+torch.manual_seed(0); x=torch.randn(8,16,32,32)
+xc=x.clone().requires_grad_(True); xg=x.clone().cuda().requires_grad_(True)
+yc=F.softmax(xc,dim=1); yg=F.softmax(xg,dim=1)
+fd=(yc-yg.cpu()).abs().max().item()
+yc.sum().backward(); yg.sum().backward()
+bd=(xc.grad-xg.grad.cpu()).abs().max().item()
+print('PASS' if fd<1e-4 and bd<1e-4 else f'FAIL fd={fd:.6f} bd={bd:.6f}')
+" 2>&1)
+echo "  spatial-softmax(dim=1): $r"; echo "$r" | grep -q PASS && KPASS=$((KPASS+1))
+
+# K3: 2D 大 softmax 反向（dim=-1, dim_size>1024，走 blockReduce）
+r=$(python -c "
+import torch, torch.nn.functional as F
+torch.manual_seed(0); x=torch.randn(64,2048); g=torch.randn(64,2048)
+xc=x.clone().requires_grad_(True); xg=x.clone().cuda().requires_grad_(True)
+(F.softmax(xc,dim=-1)*g).sum().backward()
+(F.softmax(xg,dim=-1)*g.cuda()).sum().backward()
+bd=(xc.grad-xg.grad.cpu()).abs().max().item()
+print('PASS' if bd<1e-4 else f'FAIL bd={bd:.6f}')
+" 2>&1)
+echo "  softmax-bwd(2D large): $r"; echo "$r" | grep -q PASS && KPASS=$((KPASS+1))
+
+# K4: BatchNorm train running 统计更新（触发 update_stats_and_invert running_var bug）
+r=$(python -c "
+import torch
+torch.manual_seed(0); x=torch.randn(32,16,8,8)
+bn_c=torch.nn.BatchNorm2d(16); bn_g=torch.nn.BatchNorm2d(16).cuda()
+bn_g.load_state_dict(bn_c.state_dict())
+bn_c.train(); bn_g.train()
+for _ in range(5):
+    bn_c(x); bn_g(x.cuda())
+dv=(bn_c.running_var-bn_g.running_var.cpu()).abs().max().item()
+dm=(bn_c.running_mean-bn_g.running_mean.cpu()).abs().max().item()
+print('PASS' if dv<1e-3 and dm<1e-3 else f'FAIL var={dv:.5f} mean={dm:.5f}')
+" 2>&1)
+echo "  BN-train-running_stats: $r"; echo "$r" | grep -q PASS && KPASS=$((KPASS+1))
+
+# K5: BatchNorm eval invstd（small var 放大 eps 错误，触发 eps×100 bug）
+r=$(python -c "
+import torch
+torch.manual_seed(0); x=torch.randn(8,16,8,8)
+bn_c=torch.nn.BatchNorm2d(16).eval(); bn_g=torch.nn.BatchNorm2d(16).cuda().eval()
+with torch.no_grad():
+    for bn in (bn_c,bn_g):
+        bn.running_var.fill_(1e-3); bn.running_mean.zero_()
+yc=bn_c(x); yg=bn_g(x.cuda())
+d=(yc-yg.cpu()).abs().max().item()/max(yc.abs().max().item(),1e-8)
+print('PASS' if d<1e-3 else f'FAIL rel={d:.5f}')
+" 2>&1)
+echo "  BN-eval-invstd: $r"; echo "$r" | grep -q PASS && KPASS=$((KPASS+1))
+
+# K6: Dropout train 缩放（固定 seed，检查保留元素缩放值，触发 scale bug）
+r=$(python -c "
+import torch, torch.nn.functional as F
+torch.manual_seed(0); x=torch.ones(100000).cuda()
+y=F.dropout(x,p=0.1,training=True)
+nz=y[y!=0]
+m=nz.mean().item()  # 正确 ≈ 1/0.9 = 1.1111
+print('PASS' if abs(m-1.0/0.9)<0.005 else f'FAIL scale={m:.5f}')
+" 2>&1)
+echo "  Dropout-train-scale: $r"; echo "$r" | grep -q PASS && KPASS=$((KPASS+1))
+
+score=$(python -c "print(f'{$score + 0.15*$KPASS/$KTOTAL:.4f}')")
+echo "  >>> 带电检查通过 $KPASS/$KTOTAL（权重 0.15）"
+
+echo ""
+echo ">>> [7/8] 性能检查..."
 GPU_TIME=$(python "$WORKSPACE/train.py" --steps 10 --seed 42 --device cuda --profile 2>&1 | grep "avg_step_time" | awk '{print $NF}')
 CPU_TIME=$(python "$WORKSPACE/train.py" --steps 10 --seed 42 --device cpu --profile 2>&1 | grep "avg_step_time" | awk '{print $NF}')
 if [ -n "$GPU_TIME" ] && [ -n "$CPU_TIME" ]; then
     SPEEDUP=$(python -c "print(f'{$CPU_TIME / $GPU_TIME:.1f}')" 2>/dev/null || echo "0")
     if python -c "exit(0 if $SPEEDUP > 1.5 else 1)" 2>/dev/null; then
-        score=$(python -c "print(f'{$score + 0.10:.2f}')")
+        score=$(python -c "print(f'{$score + 0.05:.2f}')")
         echo "  ✅ GPU 比 CPU 快 ${SPEEDUP}x"
     else
         echo "  ⚠️ GPU 加速不足(${SPEEDUP}x)"
@@ -245,7 +328,7 @@ else
 fi
 
 echo ""
-echo ">>> [7/7] 完整性检查..."
+echo ">>> [8/8] 完整性检查..."
 if grep -rn "nan_to_num\|clip_grad\|torch.where.*nan\|replace.*nan\|torch.clamp" "$WORKSPACE/train.py" 2>/dev/null; then
     echo "  ❌ 发现异常处理"
     HACK=1

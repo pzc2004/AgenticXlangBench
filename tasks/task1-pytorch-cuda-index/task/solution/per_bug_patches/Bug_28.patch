@@ -1,0 +1,10 @@
+--- a/aten/src/ATen/native/cuda/layer_norm_kernel.cu
++++ b/aten/src/ATen/native/cuda/layer_norm_kernel.cu
+@@ -942,7 +942,6 @@
+     }
+     warp_buf1[threadIdx.y*row_stride+threadIdx.x] = acc1;
+     warp_buf2[threadIdx.y*row_stride+threadIdx.x] = acc2;
+-    __syncthreads();
+     // sum all warps
+     for (int offset = blockDim.y/2;  offset > 1;  offset /= 2) {
+       if (threadIdx.y < offset) {

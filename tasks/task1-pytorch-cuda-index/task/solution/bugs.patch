@@ -1,6 +1,6 @@
 diff -ruN /tmp/task1_bugs_patch_work/decoys/aten/src/ATen/native/cuda/ActivationEluKernel.cu /tmp/task1_bugs_patch_work/buggy/aten/src/ATen/native/cuda/ActivationEluKernel.cu
---- aten/src/ATen/native/cuda/ActivationEluKernel.cu	2026-06-27 03:31:51.590028724 +0800
-+++ aten/src/ATen/native/cuda/ActivationEluKernel.cu	2026-06-27 03:31:51.633028228 +0800
+--- aten/src/ATen/native/cuda/ActivationEluKernel.cu	2026-06-27 08:01:10.226736364 +0800
++++ aten/src/ATen/native/cuda/ActivationEluKernel.cu	2026-06-27 08:01:10.291735607 +0800
 @@ -40,7 +40,7 @@
              iter,
              [negcoef, poscoef, negiptcoef] GPU_LAMBDA(scalar_t a) -> scalar_t {
@@ -11,9 +11,9 @@ diff -ruN /tmp/task1_bugs_patch_work/decoys/aten/src/ATen/native/cuda/Activation
              });
        });
 diff -ruN /tmp/task1_bugs_patch_work/decoys/aten/src/ATen/native/cuda/ActivationGeluKernel.cu /tmp/task1_bugs_patch_work/buggy/aten/src/ATen/native/cuda/ActivationGeluKernel.cu
---- aten/src/ATen/native/cuda/ActivationGeluKernel.cu	2026-06-27 03:31:51.590028724 +0800
-+++ aten/src/ATen/native/cuda/ActivationGeluKernel.cu	2026-06-27 03:31:51.634028216 +0800
-@@ -27,8 +27,8 @@
+--- aten/src/ATen/native/cuda/ActivationGeluKernel.cu	2026-06-27 08:01:10.266735898 +0800
++++ aten/src/ATen/native/cuda/ActivationGeluKernel.cu	2026-06-27 08:01:10.293735584 +0800
+@@ -29,8 +29,8 @@
          using opmath_t = at::opmath_type<scalar_t>;
          constexpr opmath_t kBeta = M_SQRT2 * M_2_SQRTPI * opmath_t(0.5);
          constexpr opmath_t kKappa = 0.044715;
@@ -25,8 +25,8 @@ diff -ruN /tmp/task1_bugs_patch_work/decoys/aten/src/ATen/native/cuda/Activation
        });
      });
 diff -ruN /tmp/task1_bugs_patch_work/decoys/aten/src/ATen/native/cuda/ActivationHardswishKernel.cu /tmp/task1_bugs_patch_work/buggy/aten/src/ATen/native/cuda/ActivationHardswishKernel.cu
---- aten/src/ATen/native/cuda/ActivationHardswishKernel.cu	2026-06-27 03:31:51.590028724 +0800
-+++ aten/src/ATen/native/cuda/ActivationHardswishKernel.cu	2026-06-27 03:31:51.634028216 +0800
+--- aten/src/ATen/native/cuda/ActivationHardswishKernel.cu	2026-06-27 08:01:10.226736364 +0800
++++ aten/src/ATen/native/cuda/ActivationHardswishKernel.cu	2026-06-27 08:01:10.293735584 +0800
 @@ -30,7 +30,7 @@
      const opmath_t six(6.0f);
      gpu_kernel(iter, [zero, one_sixth, three, six]GPU_LAMBDA(scalar_t self_val) -> scalar_t {
@@ -37,9 +37,9 @@ diff -ruN /tmp/task1_bugs_patch_work/decoys/aten/src/ATen/native/cuda/Activation
    });
  }
 diff -ruN /tmp/task1_bugs_patch_work/decoys/aten/src/ATen/native/cuda/ActivationLeakyReluKernel.cu /tmp/task1_bugs_patch_work/buggy/aten/src/ATen/native/cuda/ActivationLeakyReluKernel.cu
---- aten/src/ATen/native/cuda/ActivationLeakyReluKernel.cu	2026-06-27 03:31:51.590028724 +0800
-+++ aten/src/ATen/native/cuda/ActivationLeakyReluKernel.cu	2026-06-27 03:31:51.633028228 +0800
-@@ -32,7 +32,7 @@
+--- aten/src/ATen/native/cuda/ActivationLeakyReluKernel.cu	2026-06-27 08:01:10.266735898 +0800
++++ aten/src/ATen/native/cuda/ActivationLeakyReluKernel.cu	2026-06-27 08:01:10.291735607 +0800
+@@ -34,7 +34,7 @@
          auto negval = negval_.to<opmath_t>();
          gpu_kernel(iter, [negval] GPU_LAMBDA(scalar_t a) -> scalar_t {
            opmath_t aop = static_cast<opmath_t>(a);
@@ -49,8 +49,8 @@ diff -ruN /tmp/task1_bugs_patch_work/decoys/aten/src/ATen/native/cuda/Activation
        });
  }
 diff -ruN /tmp/task1_bugs_patch_work/decoys/aten/src/ATen/native/cuda/ActivationPreluKernel.cu /tmp/task1_bugs_patch_work/buggy/aten/src/ATen/native/cuda/ActivationPreluKernel.cu
---- aten/src/ATen/native/cuda/ActivationPreluKernel.cu	2026-06-27 03:31:51.590028724 +0800
-+++ aten/src/ATen/native/cuda/ActivationPreluKernel.cu	2026-06-27 03:31:51.634028216 +0800
+--- aten/src/ATen/native/cuda/ActivationPreluKernel.cu	2026-06-27 08:01:10.226736364 +0800
++++ aten/src/ATen/native/cuda/ActivationPreluKernel.cu	2026-06-27 08:01:10.293735584 +0800
 @@ -27,7 +27,7 @@
    AT_DISPATCH_FLOATING_TYPES_AND2(kBFloat16, kHalf, iter.dtype(), "prelu_cuda", [&] {
      gpu_kernel(iter,
@@ -61,9 +61,9 @@ diff -ruN /tmp/task1_bugs_patch_work/decoys/aten/src/ATen/native/cuda/Activation
    });
  }
 diff -ruN /tmp/task1_bugs_patch_work/decoys/aten/src/ATen/native/cuda/ActivationSiluKernel.cu /tmp/task1_bugs_patch_work/buggy/aten/src/ATen/native/cuda/ActivationSiluKernel.cu
---- aten/src/ATen/native/cuda/ActivationSiluKernel.cu	2026-06-27 03:31:51.607028528 +0800
-+++ aten/src/ATen/native/cuda/ActivationSiluKernel.cu	2026-06-27 03:31:51.633028228 +0800
-@@ -33,7 +33,7 @@
+--- aten/src/ATen/native/cuda/ActivationSiluKernel.cu	2026-06-27 08:01:10.266735898 +0800
++++ aten/src/ATen/native/cuda/ActivationSiluKernel.cu	2026-06-27 08:01:10.291735607 +0800
+@@ -35,7 +35,7 @@
          gpu_kernel(iter, [] GPU_LAMBDA(scalar_t x) -> scalar_t {
            using opmath_t = at::opmath_type<scalar_t>;
            const opmath_t x_acc = static_cast<opmath_t>(x) * opmath_t(1);
@@ -73,9 +73,9 @@ diff -ruN /tmp/task1_bugs_patch_work/decoys/aten/src/ATen/native/cuda/Activation
        });
  }
 diff -ruN /tmp/task1_bugs_patch_work/decoys/aten/src/ATen/native/cuda/Dropout.cu /tmp/task1_bugs_patch_work/buggy/aten/src/ATen/native/cuda/Dropout.cu
---- aten/src/ATen/native/cuda/Dropout.cu	2026-06-27 03:31:51.606028539 +0800
-+++ aten/src/ATen/native/cuda/Dropout.cu	2026-06-27 03:31:51.633028228 +0800
-@@ -70,7 +70,7 @@
+--- aten/src/ATen/native/cuda/Dropout.cu	2026-06-27 08:01:10.264735921 +0800
++++ aten/src/ATen/native/cuda/Dropout.cu	2026-06-27 08:01:10.291735607 +0800
+@@ -74,7 +74,7 @@
    // Helps align the total number of times curand_uniform4 is called by each thread for the same totalElements
    // in the vec=2 and vec=4 cases.
    bool gridxvec_loop_state = 0;
@@ -85,9 +85,9 @@ diff -ruN /tmp/task1_bugs_patch_work/decoys/aten/src/ATen/native/cuda/Dropout.cu
    float4 rand;
  
 diff -ruN /tmp/task1_bugs_patch_work/decoys/aten/src/ATen/native/cuda/Normalization.cu /tmp/task1_bugs_patch_work/buggy/aten/src/ATen/native/cuda/Normalization.cu
---- aten/src/ATen/native/cuda/Normalization.cu	2026-06-27 03:31:51.598028631 +0800
-+++ aten/src/ATen/native/cuda/Normalization.cu	2026-06-27 03:31:51.634028216 +0800
-@@ -376,7 +376,7 @@
+--- aten/src/ATen/native/cuda/Normalization.cu	2026-06-27 08:01:10.254736038 +0800
++++ aten/src/ATen/native/cuda/Normalization.cu	2026-06-27 08:01:10.293735584 +0800
+@@ -380,7 +380,7 @@
          const auto unbiased_var = var * bessel_correction_factor;
          return thrust::tuple<scalar_t, scalar_t>{
            mean * momentum + (1 - momentum) * running_mean,
@@ -96,7 +96,7 @@ diff -ruN /tmp/task1_bugs_patch_work/decoys/aten/src/ATen/native/cuda/Normalizat
          };
        });
    });
-@@ -412,8 +412,8 @@
+@@ -416,8 +416,8 @@
          const auto unbiased_var = var * bessel_correction_factor;
          return thrust::tuple<scalar_t, scalar_t, acc_t>{
            mean * momentum + (1 - momentum) * running_mean,
@@ -108,9 +108,9 @@ diff -ruN /tmp/task1_bugs_patch_work/decoys/aten/src/ATen/native/cuda/Normalizat
        });
    });
 diff -ruN /tmp/task1_bugs_patch_work/decoys/aten/src/ATen/native/cuda/SoftMax.cu /tmp/task1_bugs_patch_work/buggy/aten/src/ATen/native/cuda/SoftMax.cu
---- aten/src/ATen/native/cuda/SoftMax.cu	2026-06-27 03:31:51.603028574 +0800
-+++ aten/src/ATen/native/cuda/SoftMax.cu	2026-06-27 03:31:51.618028401 +0800
-@@ -237,7 +237,6 @@
+--- aten/src/ATen/native/cuda/SoftMax.cu	2026-06-27 08:01:10.261735956 +0800
++++ aten/src/ATen/native/cuda/SoftMax.cu	2026-06-27 08:01:10.320735269 +0800
+@@ -243,7 +243,6 @@
    ReduceOp<T> r;
    shared += threadIdx.y * blockDim.x;
  
@@ -118,7 +118,7 @@ diff -ruN /tmp/task1_bugs_patch_work/decoys/aten/src/ATen/native/cuda/SoftMax.cu
  
    shared[threadIdx.x] = val;
  
-@@ -250,7 +249,6 @@
+@@ -256,7 +255,6 @@
      offset /= 2;
    }
  
@@ -126,7 +126,7 @@ diff -ruN /tmp/task1_bugs_patch_work/decoys/aten/src/ATen/native/cuda/SoftMax.cu
  
    return shared[0];
  }
-@@ -398,7 +396,6 @@
+@@ -404,12 +402,9 @@
              AccumT defaultVal)
  {
    // To avoid RaW races from chaining blockReduce calls together, we need a sync here
@@ -134,10 +134,40 @@ diff -ruN /tmp/task1_bugs_patch_work/decoys/aten/src/ATen/native/cuda/SoftMax.cu
  
    smem[threadIdx.x] = val;
  
+-  __syncthreads();
+-
+   AccumT warpVal = defaultVal;
+ 
+   // First warp will perform per-warp reductions for the remaining warps
+@@ -428,8 +423,6 @@
+     }
+   }
+ 
+-  __syncthreads();
+-
+   // First thread will perform a reduction of the above per-warp reductions
+   AccumT blockVal = defaultVal;
+ 
+@@ -441,7 +434,6 @@
+   }
+ 
+   // Sync and broadcast
+-  __syncthreads();
+   return smem[0];
+ }
+ 
+@@ -455,7 +447,6 @@
+   if (threadIdx.x == 0) {
+     smem_cache[0] = result;
+   }
+-  __syncthreads();
+   return smem_cache[0];
+ }
+ 
 diff -ruN /tmp/task1_bugs_patch_work/decoys/aten/src/ATen/native/cuda/group_norm_kernel.cu /tmp/task1_bugs_patch_work/buggy/aten/src/ATen/native/cuda/group_norm_kernel.cu
---- aten/src/ATen/native/cuda/group_norm_kernel.cu	2026-06-27 03:31:51.602028585 +0800
-+++ aten/src/ATen/native/cuda/group_norm_kernel.cu	2026-06-27 03:31:51.635028205 +0800
-@@ -94,9 +94,9 @@
+--- aten/src/ATen/native/cuda/group_norm_kernel.cu	2026-06-27 08:01:10.251736073 +0800
++++ aten/src/ATen/native/cuda/group_norm_kernel.cu	2026-06-27 08:01:10.295735560 +0800
+@@ -98,9 +98,9 @@
      const int64_t c = index % C;
      const T_ACC scale = (gamma == nullptr)
          ? static_cast<T_ACC>(rstd[ng])
@@ -149,7 +179,7 @@ diff -ruN /tmp/task1_bugs_patch_work/decoys/aten/src/ATen/native/cuda/group_norm
          ((beta == nullptr) ? 0 : static_cast<T_ACC>(beta[c]));
    }
  }
-@@ -242,7 +242,6 @@
+@@ -246,7 +246,6 @@
    g_shared[threadIdx.y + blockDim.y][threadIdx.x] = dg_sum2;
    b_shared[threadIdx.y][threadIdx.x] = db_sum1;
    b_shared[threadIdx.y + blockDim.y][threadIdx.x] = db_sum2;
@@ -158,9 +188,9 @@ diff -ruN /tmp/task1_bugs_patch_work/decoys/aten/src/ATen/native/cuda/group_norm
    // Do warp reduce for the 1st 16 cols in the tile.
    T_ACC sum1 = g_shared[threadIdx.x][threadIdx.y];
 diff -ruN /tmp/task1_bugs_patch_work/decoys/aten/src/ATen/native/cuda/layer_norm_kernel.cu /tmp/task1_bugs_patch_work/buggy/aten/src/ATen/native/cuda/layer_norm_kernel.cu
---- aten/src/ATen/native/cuda/layer_norm_kernel.cu	2026-06-27 03:31:51.595028666 +0800
-+++ aten/src/ATen/native/cuda/layer_norm_kernel.cu	2026-06-27 03:31:51.638028170 +0800
-@@ -91,7 +91,7 @@
+--- aten/src/ATen/native/cuda/layer_norm_kernel.cu	2026-06-27 08:01:10.246736131 +0800
++++ aten/src/ATen/native/cuda/layer_norm_kernel.cu	2026-06-27 08:01:10.310735386 +0800
+@@ -97,7 +97,7 @@
      T_ACC m1;
      T_ACC m2;
      thrust::tie(m2, m1) = welford_op.project(val);
@@ -169,7 +199,7 @@ diff -ruN /tmp/task1_bugs_patch_work/decoys/aten/src/ATen/native/cuda/layer_norm
      rstd[i] = c10::cuda::compat::rsqrt(m2 + eps);
    }
  }
-@@ -214,7 +214,6 @@
+@@ -220,7 +220,6 @@
          meansigmabuf[0] = wd.mean;
          meansigmabuf[1] = wd.sigma2/float(N);
        }
@@ -177,7 +207,7 @@ diff -ruN /tmp/task1_bugs_patch_work/decoys/aten/src/ATen/native/cuda/layer_norm
        return WelfordDataLN{meansigmabuf[0], meansigmabuf[1],0.f};
  
      } else {
-@@ -250,7 +249,7 @@
+@@ -256,7 +255,7 @@
      const int thrx = threadIdx.x + threadIdx.y * blockDim.x;
      const int n_vec_to_read = N/vec_size;
  
@@ -186,7 +216,7 @@ diff -ruN /tmp/task1_bugs_patch_work/decoys/aten/src/ATen/native/cuda/layer_norm
  
      // No tail, N is guaranteed to be multiple of vec size
      for (int i = thrx; i < n_vec_to_read; i += numx) {
-@@ -284,7 +283,7 @@
+@@ -290,7 +289,7 @@
      }
      if (thrx == 0) {
        mean[i1] = wd.mean;
@@ -195,7 +225,7 @@ diff -ruN /tmp/task1_bugs_patch_work/decoys/aten/src/ATen/native/cuda/layer_norm
      }
  }
  
-@@ -329,7 +328,7 @@
+@@ -335,7 +334,7 @@
    T_ACC * buf){
      const auto i1 = blockIdx.x;
      const T_ACC mean_val = mean[i1];
@@ -204,7 +234,7 @@ diff -ruN /tmp/task1_bugs_patch_work/decoys/aten/src/ATen/native/cuda/layer_norm
      T_ACC stats_x1{0}, stats_x2{0};
      constexpr int unroll = 4;
      auto l = unroll * threadIdx.x;
-@@ -345,7 +344,7 @@
+@@ -351,7 +350,7 @@
            const auto c_h = static_cast<T_ACC>(X_i[l+k]);
            const auto c_loss = static_cast<T_ACC>(dY_i[l+k]);
            stats_x1 += c_loss * gamma_val;
@@ -213,7 +243,7 @@ diff -ruN /tmp/task1_bugs_patch_work/decoys/aten/src/ATen/native/cuda/layer_norm
        }
      }
      for (;  l < N; l ++) {
-@@ -362,7 +361,6 @@
+@@ -368,7 +367,6 @@
        buf[0] = stats_x1;
        buf[1] = stats_x2;
      }
@@ -221,7 +251,7 @@ diff -ruN /tmp/task1_bugs_patch_work/decoys/aten/src/ATen/native/cuda/layer_norm
      stats_x1 = buf[0];
      stats_x2 = buf[1];
      T_ACC fH = N;
-@@ -373,7 +371,7 @@
+@@ -379,7 +377,7 @@
          const auto dy = dY_i[l];
          const auto gamma_val = (gamma != nullptr) ? static_cast<T_ACC>(gamma[l]) : T_ACC(1);
  
@@ -230,3 +260,51 @@ diff -ruN /tmp/task1_bugs_patch_work/decoys/aten/src/ATen/native/cuda/layer_norm
          f_grad_input -= (x - mean_val) * rstd_val * stats_x2 * T_ACC(1);
          f_grad_input -= stats_x1;
          f_grad_input *= term1;
+@@ -475,7 +473,6 @@
+     reduce_buf[0] = stats_x1;
+     reduce_buf[1] = stats_x2;
+   }
+-  __syncthreads();
+   stats_x1 = reduce_buf[0];
+   stats_x2 = reduce_buf[1];
+ 
+@@ -635,7 +632,6 @@
+     s_db = s_data_typed + (padded_bx * blockDim.y);
+     s_dg[threadIdx.y * padded_bx + threadIdx.x] = dg_sum;
+     s_db[threadIdx.y * padded_bx + threadIdx.x] = db_sum;
+-    __syncthreads();
+ 
+     // Load transposed so that a warp holds an entire column
+     T_ACC reg_dg = s_dg[threadIdx.x * padded_bx + threadIdx.y];
+@@ -719,7 +715,6 @@
+     s_db = s_data_typed + blockDim.x * blockDim.y;
+     s_dg[threadIdx.y * blockDim.x + threadIdx.x] = dg_sum;
+     s_db[threadIdx.y * blockDim.x + threadIdx.x] = db_sum;
+-    __syncthreads();
+ 
+     for (int offset = blockDim.y / 2; offset >= 1; offset /= 2) {
+       if (threadIdx.y < offset) {
+@@ -942,7 +937,6 @@
+     for (int i1_block = i1_beg+blockDim.y*blockDim.y;  i1_block < i1_end;  i1_block+=blockDim.y*blockDim.y) {
+       cuLoadAddStridedInputs(i1_block,thr_load_row_off,thr_load_col_off,i2_off,row_stride,warp_buf1,warp_buf2,input,dout,i1_end,N,mean,rstd);
+     }
+-    __syncthreads();
+     // inter-warp reductions
+     // sum within each warp
+     T_ACC acc1 = T_ACC(0);
+@@ -955,7 +949,6 @@
+     }
+     warp_buf1[threadIdx.y*row_stride+threadIdx.x] = acc1;
+     warp_buf2[threadIdx.y*row_stride+threadIdx.x] = acc2;
+-    __syncthreads();
+     // sum all warps
+     for (int offset = blockDim.y/2;  offset > 1;  offset /= 2) {
+       if (threadIdx.y < offset) {
+@@ -1138,7 +1131,6 @@
+       }
+     }
+     // prevent race where buf is written again before reads are done
+-    __syncthreads();
+   }
+ }
+ 

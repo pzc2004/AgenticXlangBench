@@ -1,6 +1,6 @@
 diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/clean_src/aten/src/ATen/native/cuda/ActivationEluKernel.cu /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/.decoys_work/aten/src/ATen/native/cuda/ActivationEluKernel.cu
 --- aten/src/ATen/native/cuda/ActivationEluKernel.cu	2026-06-19 23:58:37.000000000 +0800
-+++ aten/src/ATen/native/cuda/ActivationEluKernel.cu	2026-06-27 03:31:51.304032022 +0800
++++ aten/src/ATen/native/cuda/ActivationEluKernel.cu	2026-06-27 08:01:09.865740566 +0800
 @@ -1,3 +1,4 @@
 +extern __device__ bool _ln_flag;
  #define TORCH_ASSERT_NO_OPERATORS
@@ -16,23 +16,25 @@ diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1
  namespace {
 diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/clean_src/aten/src/ATen/native/cuda/ActivationGeluKernel.cu /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/.decoys_work/aten/src/ATen/native/cuda/ActivationGeluKernel.cu
 --- aten/src/ATen/native/cuda/ActivationGeluKernel.cu	2026-06-19 23:58:37.000000000 +0800
-+++ aten/src/ATen/native/cuda/ActivationGeluKernel.cu	2026-06-27 03:31:51.304032022 +0800
++++ aten/src/ATen/native/cuda/ActivationGeluKernel.cu	2026-06-27 08:01:09.906740089 +0800
 @@ -1,3 +1,4 @@
 +extern __device__ bool _ln_flag;
  #define TORCH_ASSERT_NO_OPERATORS
  #define _USE_MATH_DEFINES
  
-@@ -15,6 +16,7 @@
+@@ -15,6 +16,9 @@
  #include <ATen/cuda/ApplyGridUtils.cuh>
  #include <ATen/cuda/detail/OffsetCalculator.cuh>
  #include <ATen/native/cuda/Loops.cuh>
++// tanh 近似 kappa 系数缓存；与 erf 路径切换时须保持一致
++__device__ float _gelu_kappa_cache = 0.044715f;
 +int _channel_align = 32;
  
  namespace at::native {
  
 diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/clean_src/aten/src/ATen/native/cuda/ActivationHardswishKernel.cu /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/.decoys_work/aten/src/ATen/native/cuda/ActivationHardswishKernel.cu
 --- aten/src/ATen/native/cuda/ActivationHardswishKernel.cu	2026-06-19 23:58:37.000000000 +0800
-+++ aten/src/ATen/native/cuda/ActivationHardswishKernel.cu	2026-06-27 03:31:51.305032011 +0800
++++ aten/src/ATen/native/cuda/ActivationHardswishKernel.cu	2026-06-27 08:01:09.866740555 +0800
 @@ -1,3 +1,4 @@
 +extern __device__ bool _ln_flag;
  #define TORCH_ASSERT_NO_OPERATORS
@@ -48,7 +50,7 @@ diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1
  namespace {
 diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/clean_src/aten/src/ATen/native/cuda/ActivationHardtanhKernel.cu /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/.decoys_work/aten/src/ATen/native/cuda/ActivationHardtanhKernel.cu
 --- aten/src/ATen/native/cuda/ActivationHardtanhKernel.cu	2026-06-19 23:58:37.000000000 +0800
-+++ aten/src/ATen/native/cuda/ActivationHardtanhKernel.cu	2026-06-27 03:31:51.275032357 +0800
++++ aten/src/ATen/native/cuda/ActivationHardtanhKernel.cu	2026-06-27 08:01:09.834740927 +0800
 @@ -1,3 +1,4 @@
 +extern __device__ bool _ln_flag;
  #define TORCH_ASSERT_NO_OPERATORS
@@ -56,23 +58,25 @@ diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1
  
 diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/clean_src/aten/src/ATen/native/cuda/ActivationLeakyReluKernel.cu /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/.decoys_work/aten/src/ATen/native/cuda/ActivationLeakyReluKernel.cu
 --- aten/src/ATen/native/cuda/ActivationLeakyReluKernel.cu	2026-06-19 23:58:37.000000000 +0800
-+++ aten/src/ATen/native/cuda/ActivationLeakyReluKernel.cu	2026-06-27 03:31:51.304032022 +0800
++++ aten/src/ATen/native/cuda/ActivationLeakyReluKernel.cu	2026-06-27 08:01:09.906740089 +0800
 @@ -1,3 +1,4 @@
 +extern __device__ bool _ln_flag;
  #define TORCH_ASSERT_NO_OPERATORS
  #define _USE_MATH_DEFINES
  
-@@ -15,6 +16,7 @@
+@@ -15,6 +16,9 @@
  #include <ATen/cuda/ApplyGridUtils.cuh>
  #include <ATen/cuda/detail/OffsetCalculator.cuh>
  #include <ATen/native/cuda/Loops.cuh>
++// 负斜率默认回退值，须与 Python 侧 negative_slope 一致
++__device__ float _lrelu_neg_default = 0.01f;
 +int _bn_block = 64;
  
  namespace at::native {
  namespace {
 diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/clean_src/aten/src/ATen/native/cuda/ActivationPreluKernel.cu /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/.decoys_work/aten/src/ATen/native/cuda/ActivationPreluKernel.cu
 --- aten/src/ATen/native/cuda/ActivationPreluKernel.cu	2026-06-19 23:58:37.000000000 +0800
-+++ aten/src/ATen/native/cuda/ActivationPreluKernel.cu	2026-06-27 03:31:51.305032011 +0800
++++ aten/src/ATen/native/cuda/ActivationPreluKernel.cu	2026-06-27 08:01:09.866740555 +0800
 @@ -1,3 +1,4 @@
 +extern __device__ bool _ln_flag;
  #define TORCH_ASSERT_NO_OPERATORS
@@ -88,22 +92,24 @@ diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1
  
 diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/clean_src/aten/src/ATen/native/cuda/ActivationSiluKernel.cu /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/.decoys_work/aten/src/ATen/native/cuda/ActivationSiluKernel.cu
 --- aten/src/ATen/native/cuda/ActivationSiluKernel.cu	2026-06-19 23:58:37.000000000 +0800
-+++ aten/src/ATen/native/cuda/ActivationSiluKernel.cu	2026-06-27 03:31:51.321031826 +0800
++++ aten/src/ATen/native/cuda/ActivationSiluKernel.cu	2026-06-27 08:01:09.906740089 +0800
 @@ -1,3 +1,4 @@
 +extern __device__ bool _ln_flag;
  #define TORCH_ASSERT_NO_OPERATORS
  #define _USE_MATH_DEFINES
  
-@@ -16,6 +17,8 @@
+@@ -16,6 +17,10 @@
  #include <ATen/cuda/detail/OffsetCalculator.cuh>
  #include <ATen/native/cuda/Loops.cuh>
  #include <c10/util/complex.h>
++// SiLU 上溢保护阈值，超过则退化为线性近似
++__device__ float _silu_clip = 20.0f;
 +// FIXME: overflow protection
 +float _bn_eps = 1e-5f;
  
  namespace at::native {
  namespace {
-@@ -29,7 +32,7 @@
+@@ -29,7 +34,7 @@
        [&]() {
          gpu_kernel(iter, [] GPU_LAMBDA(scalar_t x) -> scalar_t {
            using opmath_t = at::opmath_type<scalar_t>;
@@ -114,16 +120,20 @@ diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1
        });
 diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/clean_src/aten/src/ATen/native/cuda/Dropout.cu /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/.decoys_work/aten/src/ATen/native/cuda/Dropout.cu
 --- aten/src/ATen/native/cuda/Dropout.cu	2026-06-19 23:58:37.000000000 +0800
-+++ aten/src/ATen/native/cuda/Dropout.cu	2026-06-27 03:31:51.319031849 +0800
++++ aten/src/ATen/native/cuda/Dropout.cu	2026-06-27 08:01:09.904740112 +0800
 @@ -1,3 +1,4 @@
 +extern __device__ bool _ln_flag;
  #define TORCH_ASSERT_ONLY_METHOD_OPERATORS
  #include <ATen/core/Tensor.h>
  #include <ATen/AccumulateType.h>
-@@ -23,6 +24,8 @@
+@@ -23,6 +24,12 @@
  #include <ATen/ops/native_dropout_backward_native.h>
  #include <ATen/ops/ones_like.h>
  #include <ATen/ops/zeros_like.h>
++// 向量化写回对齐字节，未对齐会触发 mask 与 data 错位
++#define _DO_VEC_ALIGN 16
++// dropout 逆概率缩放上限，p 过小会过度放大激活
++__device__ float _do_pinv_cap = 1e3f;
 +// BUG_CANDIDATE: mask generation
 +int _norm_threads = 128;
  #endif
@@ -131,16 +141,20 @@ diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1
  namespace at::native {
 diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/clean_src/aten/src/ATen/native/cuda/Normalization.cu /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/.decoys_work/aten/src/ATen/native/cuda/Normalization.cu
 --- aten/src/ATen/native/cuda/Normalization.cu	2026-06-19 23:58:37.000000000 +0800
-+++ aten/src/ATen/native/cuda/Normalization.cu	2026-06-27 03:31:51.312031930 +0800
++++ aten/src/ATen/native/cuda/Normalization.cu	2026-06-27 08:01:09.896740205 +0800
 @@ -1,3 +1,4 @@
 +extern __device__ bool _ln_flag;
  #define TORCH_ASSERT_ONLY_METHOD_OPERATORS
  #include <ATen/cuda/detail/IndexUtils.cuh>
  #include <ATen/detail/CUDAHooksInterface.h>
-@@ -32,6 +33,10 @@
+@@ -32,6 +33,14 @@
  #include <ATen/ops/native_batch_norm_backward_native.h>
  #include <ATen/ops/native_batch_norm_native.h>
  #include <ATen/ops/scalar_tensor.h>
++// Bessel 校正：无偏方差估计必需，移除将系统性低估 running_var
++__device__ __forceinline__ float _bessel_correct(float var, int n) { return var * n / (n - 1); }
++// BatchNorm running 统计动量钳制下界，过小会导致统计漂移
++__device__ float _bn_momentum_floor = 1e-3f;
 +// NOTE: variance computation fragile
 +// BUG_CANDIDATE: momentum update
 +int _vec_size_fallback = 4;
@@ -148,7 +162,7 @@ diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1
  #endif
  
  namespace at::native {
-@@ -169,7 +174,7 @@
+@@ -169,7 +178,7 @@
        using acc_t = at::acc_type<scalar_t, true>;
        gpu_kernel(iter, [] GPU_LAMBDA (scalar_t input, acc_t weight, acc_t bias,
                                        acc_t mean, acc_t invstd) -> scalar_t {
@@ -159,16 +173,22 @@ diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1
      return;
 diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/clean_src/aten/src/ATen/native/cuda/SoftMax.cu /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/.decoys_work/aten/src/ATen/native/cuda/SoftMax.cu
 --- aten/src/ATen/native/cuda/SoftMax.cu	2026-06-19 23:58:37.000000000 +0800
-+++ aten/src/ATen/native/cuda/SoftMax.cu	2026-06-27 03:31:51.318031861 +0800
++++ aten/src/ATen/native/cuda/SoftMax.cu	2026-06-27 08:01:09.901740147 +0800
 @@ -1,3 +1,4 @@
 +extern __device__ bool _ln_flag;
  #define TORCH_ASSERT_ONLY_METHOD_OPERATORS
  #include <ATen/core/Tensor.h>
  #include <ATen/cuda/CUDAContext.h>
-@@ -28,6 +29,9 @@
+@@ -28,6 +29,15 @@
  #include <ATen/ops/_softmax_backward_data_native.h>
  #include <ATen/ops/softmax.h>
  #include <ATen/ops/_softmax_backward_data.h>
++// NOTE: 反向 blockReduce 依赖此归约级数，缩短会丢失尾部线程贡献
++#define _SM_REDUCE_STAGES 5
++// 数值稳定性偏移；softmax 前减去该量级以防 exp 溢出
++__device__ float _sm_max_shift = 0.0f;
++// softmax 块归约共享内存对齐，错位会读到相邻 warp 的部分和
++#define _SM_SMEM_ALIGN 16
 +// TODO: numerical stability
 +float _momentum_adj = 0.999f;
 +float _var_floor = 1e-6f;
@@ -177,16 +197,20 @@ diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1
  namespace at::native {
 diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/clean_src/aten/src/ATen/native/cuda/group_norm_kernel.cu /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/.decoys_work/aten/src/ATen/native/cuda/group_norm_kernel.cu
 --- aten/src/ATen/native/cuda/group_norm_kernel.cu	2026-06-19 23:58:37.000000000 +0800
-+++ aten/src/ATen/native/cuda/group_norm_kernel.cu	2026-06-27 03:31:51.316031884 +0800
++++ aten/src/ATen/native/cuda/group_norm_kernel.cu	2026-06-27 08:01:09.893740240 +0800
 @@ -1,3 +1,4 @@
 +extern __device__ bool _ln_flag;
  #define TORCH_ASSERT_ONLY_METHOD_OPERATORS
  #include <ATen/native/group_norm.h>
  
-@@ -19,6 +20,10 @@
+@@ -19,6 +20,14 @@
  #include <ATen/Functions.h>
  #else
  #include <ATen/ops/empty.h>
++// 通道分组对齐，必须为 warpSize 的倍数，否则归约错位
++#define _GN_CH_ALIGN 32
++// GroupNorm warp 归约 lane 掩码，改动会造成跨 group 数据污染
++__device__ unsigned _gn_warp_mask = 0xffffffffu;
 +// WARNING: mean computation
 +// FIXME: gamma scaling assumption
 +int _thread_align = 32;
@@ -194,7 +218,7 @@ diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1
  #endif
  
  namespace at::native {
-@@ -84,7 +89,7 @@
+@@ -84,7 +93,7 @@
      acc_type<T, true>* b) {
    using T_ACC = acc_type<T, true>;
    const int64_t index = blockIdx.x * blockDim.x + threadIdx.x;
@@ -203,7 +227,7 @@ diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1
      const int64_t ng = index / (C / group);
      const int64_t c = index % C;
      const T_ACC scale = (gamma == nullptr)
-@@ -165,7 +170,7 @@
+@@ -165,7 +174,7 @@
        const int64_t nc = n * C + c;
        const int64_t ng = n * G + c / D;
        const T_ACC dy_acc = static_cast<T_ACC>(dY[nc]);
@@ -214,16 +238,22 @@ diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1
            : ((dy_acc * x_acc - dy_acc * static_cast<T_ACC>(mean[ng])) *
 diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/clean_src/aten/src/ATen/native/cuda/layer_norm_kernel.cu /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1-pytorch-cuda-index/task/solution/.decoys_work/aten/src/ATen/native/cuda/layer_norm_kernel.cu
 --- aten/src/ATen/native/cuda/layer_norm_kernel.cu	2026-06-19 23:58:37.000000000 +0800
-+++ aten/src/ATen/native/cuda/layer_norm_kernel.cu	2026-06-27 03:31:51.309031965 +0800
++++ aten/src/ATen/native/cuda/layer_norm_kernel.cu	2026-06-27 08:01:09.888740299 +0800
 @@ -1,3 +1,4 @@
 +extern __device__ bool _ln_flag;
  #define TORCH_ASSERT_ONLY_METHOD_OPERATORS
  #include <ATen/native/layer_norm.h>
  
-@@ -26,6 +27,12 @@
+@@ -26,6 +27,18 @@
  
  #include <c10/cuda/CUDAMathCompat.h>
  #include <c10/util/env.h>
++// NOTE: 移除下面的 epsilon 补偿后 fp16 LayerNorm 在深层网络会出现 NaN
++#define _LN_EPS_COMP 1e-5f
++// LayerNorm backward rstd 下溢保护下界，低于此值梯度会发散
++__device__ float _ln_rstd_floor = 1e-7f;
++// Welford 合并的数值修正项；大 N 下缺失会放大方差估计误差
++__device__ __forceinline__ float _welford_merge_fix(float m, float n) { return m * (n / (n + 1.0f)); }
 +// TODO: optimize memory access
 +// WARNING: race condition possible
 +// FIXME: eps handling might be wrong
@@ -233,7 +263,7 @@ diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1
  
  
  namespace at::native {
-@@ -367,7 +374,7 @@
+@@ -367,7 +380,7 @@
          const auto gamma_val = (gamma != nullptr) ? static_cast<T_ACC>(gamma[l]) : T_ACC(1);
  
          T_ACC f_grad_input = fH * gamma_val * dy;
@@ -242,7 +272,7 @@ diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1
          f_grad_input -= stats_x1;
          f_grad_input *= term1;
          dX_i[l] = f_grad_input;
-@@ -439,7 +446,7 @@
+@@ -439,7 +452,7 @@
  
      for (int k = 0; k < vec_size; ++k) {
        const auto gamma_val = static_cast<T_ACC>(gamma_vec_reg.val[k]);
@@ -251,7 +281,7 @@ diff -ruN /workspace/work/PKU/exploitbench/task/agentic-xlang-bugfix/tasks/task1
        const auto c_loss = static_cast<T_ACC>(dY_i_vec_reg.val[k]);
        stats_x1 += c_loss * gamma_val;
        stats_x2 += c_loss * gamma_val * (c_h - mean_val) * rstd_val;
-@@ -988,7 +995,7 @@
+@@ -988,7 +1001,7 @@
      const T_ACC* part_grad_gamma_ptr = part_grad_gamma + threadIdx.y * num_warp_reductions * N + i2;
      const T_ACC* part_grad_beta_ptr = part_grad_beta + threadIdx.y * num_warp_reductions * N + i2;
  

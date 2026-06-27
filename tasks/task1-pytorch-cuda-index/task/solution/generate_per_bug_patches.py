@@ -139,6 +139,52 @@ BUGS = [
     ("Bug 25", _cu("layer_norm_kernel.cu"),
      "T_ACC f_grad_input = fH * gamma_val * dy;",
      "T_ACC f_grad_input = fH * gamma_val * dy * T_ACC(0.9);"),
+
+    # ============================================================
+    # 删除型扩充 (Bug 26-35): 删除保护 cross-warp shared memory
+    # 归约的 __syncthreads，制造确定性错误 / race。
+    # ============================================================
+    # --- LayerNorm backward 的多处 block reduce 同步 ---
+    ("Bug 26", _cu("layer_norm_kernel.cu"),
+     "    s_db[threadIdx.y * padded_bx + threadIdx.x] = db_sum;\n    __syncthreads();",
+     "    s_db[threadIdx.y * padded_bx + threadIdx.x] = db_sum;"),
+
+    ("Bug 27", _cu("layer_norm_kernel.cu"),
+     "    s_db[threadIdx.y * blockDim.x + threadIdx.x] = db_sum;\n    __syncthreads();",
+     "    s_db[threadIdx.y * blockDim.x + threadIdx.x] = db_sum;"),
+
+    ("Bug 28", _cu("layer_norm_kernel.cu"),
+     "    warp_buf2[threadIdx.y*row_stride+threadIdx.x] = acc2;\n    __syncthreads();",
+     "    warp_buf2[threadIdx.y*row_stride+threadIdx.x] = acc2;"),
+
+    ("Bug 29", _cu("layer_norm_kernel.cu"),
+     "    // prevent race where buf is written again before reads are done\n    __syncthreads();",
+     "    // prevent race where buf is written again before reads are done"),
+
+    ("Bug 30", _cu("layer_norm_kernel.cu"),
+     "    reduce_buf[1] = stats_x2;\n  }\n  __syncthreads();\n  stats_x1 = reduce_buf[0];",
+     "    reduce_buf[1] = stats_x2;\n  }\n  stats_x1 = reduce_buf[0];"),
+
+    ("Bug 31", _cu("layer_norm_kernel.cu"),
+     "    }\n    __syncthreads();\n    // inter-warp reductions",
+     "    }\n    // inter-warp reductions"),
+
+    # --- SoftMax blockReduce / blockReduceWarp 的归约同步 ---
+    ("Bug 32", _cu("SoftMax.cu"),
+     "  smem[threadIdx.x] = val;\n\n  __syncthreads();",
+     "  smem[threadIdx.x] = val;"),
+
+    ("Bug 33", _cu("SoftMax.cu"),
+     "  }\n\n  __syncthreads();\n\n  // First thread will perform a reduction",
+     "  }\n\n  // First thread will perform a reduction"),
+
+    ("Bug 34", _cu("SoftMax.cu"),
+     "  // Sync and broadcast\n  __syncthreads();\n  return smem[0];",
+     "  // Sync and broadcast\n  return smem[0];"),
+
+    ("Bug 35", _cu("SoftMax.cu"),
+     "    smem_cache[0] = result;\n  }\n  __syncthreads();\n  return smem_cache[0];",
+     "    smem_cache[0] = result;\n  }\n  return smem_cache[0];"),
 ]
 
 

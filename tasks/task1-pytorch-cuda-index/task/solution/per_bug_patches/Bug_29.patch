@@ -1,0 +1,10 @@
+--- a/aten/src/ATen/native/cuda/layer_norm_kernel.cu
++++ b/aten/src/ATen/native/cuda/layer_norm_kernel.cu
+@@ -1125,7 +1125,6 @@
+       }
+     }
+     // prevent race where buf is written again before reads are done
+-    __syncthreads();
+   }
+ }
+ 

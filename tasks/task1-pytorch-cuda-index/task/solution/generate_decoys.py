@@ -121,6 +121,72 @@ COMMENT_DECOYS = [
 ]
 
 
+# ============================================================
+# 4. 迷惑性诱饵（在最后一个 #include 之后插入）
+#    伪装成"关键工具函数 / 数值参数"，带"移除将导致 X"的误导注释。
+#    本身未被调用 / 未使用 —— 编译通过、对结果零影响、删除等价于干净源码，
+#    但看起来像正在生效的关键逻辑，制造大量虚假 bug 线索、诱导 agent 误改。
+# ============================================================
+MISLEAD_DECOYS = [
+    # ---- LayerNorm ----
+    (_cu("layer_norm_kernel.cu"),
+     "// Welford 合并的数值修正项；大 N 下缺失会放大方差估计误差\n"
+     "__device__ __forceinline__ float _welford_merge_fix(float m, float n) { return m * (n / (n + 1.0f)); }"),
+    (_cu("layer_norm_kernel.cu"),
+     "// LayerNorm backward rstd 下溢保护下界，低于此值梯度会发散\n"
+     "__device__ float _ln_rstd_floor = 1e-7f;"),
+    (_cu("layer_norm_kernel.cu"),
+     "// NOTE: 移除下面的 epsilon 补偿后 fp16 LayerNorm 在深层网络会出现 NaN\n"
+     "#define _LN_EPS_COMP 1e-5f"),
+
+    # ---- GroupNorm ----
+    (_cu("group_norm_kernel.cu"),
+     "// GroupNorm warp 归约 lane 掩码，改动会造成跨 group 数据污染\n"
+     "__device__ unsigned _gn_warp_mask = 0xffffffffu;"),
+    (_cu("group_norm_kernel.cu"),
+     "// 通道分组对齐，必须为 warpSize 的倍数，否则归约错位\n"
+     "#define _GN_CH_ALIGN 32"),
+
+    # ---- BatchNorm ----
+    (_cu("Normalization.cu"),
+     "// BatchNorm running 统计动量钳制下界，过小会导致统计漂移\n"
+     "__device__ float _bn_momentum_floor = 1e-3f;"),
+    (_cu("Normalization.cu"),
+     "// Bessel 校正：无偏方差估计必需，移除将系统性低估 running_var\n"
+     "__device__ __forceinline__ float _bessel_correct(float var, int n) { return var * n / (n - 1); }"),
+
+    # ---- SoftMax ----
+    (_cu("SoftMax.cu"),
+     "// softmax 块归约共享内存对齐，错位会读到相邻 warp 的部分和\n"
+     "#define _SM_SMEM_ALIGN 16"),
+    (_cu("SoftMax.cu"),
+     "// 数值稳定性偏移；softmax 前减去该量级以防 exp 溢出\n"
+     "__device__ float _sm_max_shift = 0.0f;"),
+    (_cu("SoftMax.cu"),
+     "// NOTE: 反向 blockReduce 依赖此归约级数，缩短会丢失尾部线程贡献\n"
+     "#define _SM_REDUCE_STAGES 5"),
+
+    # ---- Dropout ----
+    (_cu("Dropout.cu"),
+     "// dropout 逆概率缩放上限，p 过小会过度放大激活\n"
+     "__device__ float _do_pinv_cap = 1e3f;"),
+    (_cu("Dropout.cu"),
+     "// 向量化写回对齐字节，未对齐会触发 mask 与 data 错位\n"
+     "#define _DO_VEC_ALIGN 16"),
+
+    # ---- Activations ----
+    (_cu("ActivationGeluKernel.cu"),
+     "// tanh 近似 kappa 系数缓存；与 erf 路径切换时须保持一致\n"
+     "__device__ float _gelu_kappa_cache = 0.044715f;"),
+    (_cu("ActivationSiluKernel.cu"),
+     "// SiLU 上溢保护阈值，超过则退化为线性近似\n"
+     "__device__ float _silu_clip = 20.0f;"),
+    (_cu("ActivationLeakyReluKernel.cu"),
+     "// 负斜率默认回退值，须与 Python 侧 negative_slope 一致\n"
+     "__device__ float _lrelu_neg_default = 0.01f;"),
+]
+
+
 def _read(path):
     with open(path) as f:
         return f.read()
@@ -174,6 +240,10 @@ def apply_all_decoys(clean_dir, work_dir):
     for rel, snippet in COMMENT_DECOYS:
         _insert_after_last_include(work_dir, rel, snippet)
 
+    # 4. 迷惑性诱饵
+    for rel, snippet in MISLEAD_DECOYS:
+        _insert_after_last_include(work_dir, rel, snippet)
+
 
 def make_patch(clean_dir, work_dir, output_patch):
     diff = subprocess.run(
@@ -213,11 +283,12 @@ def main():
     make_patch(clean_dir, work_dir, output_patch)
     shutil.rmtree(work_dir)
 
-    n = len(LN_FLAG_FILES) + len(TRAP_DECOYS) + len(UNUSED_VARS) + len(COMMENT_DECOYS)
+    n = (len(LN_FLAG_FILES) + len(TRAP_DECOYS) + len(UNUSED_VARS)
+         + len(COMMENT_DECOYS) + len(MISLEAD_DECOYS))
     print(f"  ✅ Wrote {output_patch}")
     print(f"     诱饵总数: {n} "
           f"({len(LN_FLAG_FILES)} ln_flag + {len(TRAP_DECOYS)} 陷阱 + "
-          f"{len(UNUSED_VARS)+len(COMMENT_DECOYS)} 普通)")
+          f"{len(UNUSED_VARS)+len(COMMENT_DECOYS)} 普通 + {len(MISLEAD_DECOYS)} 迷惑)")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,10 @@
+--- a/aten/src/ATen/native/cuda/SoftMax.cu
++++ b/aten/src/ATen/native/cuda/SoftMax.cu
+@@ -445,7 +445,6 @@
+   if (threadIdx.x == 0) {
+     smem_cache[0] = result;
+   }
+-  __syncthreads();
+   return smem_cache[0];
+ }
+ 

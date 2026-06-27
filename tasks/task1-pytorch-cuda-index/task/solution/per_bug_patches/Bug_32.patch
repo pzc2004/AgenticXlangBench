@@ -1,0 +1,11 @@
+--- a/aten/src/ATen/native/cuda/SoftMax.cu
++++ b/aten/src/ATen/native/cuda/SoftMax.cu
+@@ -398,8 +398,6 @@
+ 
+   smem[threadIdx.x] = val;
+ 
+-  __syncthreads();
+-
+   AccumT warpVal = defaultVal;
+ 
+   // First warp will perform per-warp reductions for the remaining warps

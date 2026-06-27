@@ -1,0 +1,10 @@
+--- a/aten/src/ATen/native/cuda/SoftMax.cu
++++ b/aten/src/ATen/native/cuda/SoftMax.cu
+@@ -431,7 +431,6 @@
+   }
+ 
+   // Sync and broadcast
+-  __syncthreads();
+   return smem[0];
+ }
+ 

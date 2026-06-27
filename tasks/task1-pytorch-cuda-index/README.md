@@ -2,7 +2,7 @@
 
 ## 概述
 
-在 PyTorch 源码的多个 CUDA kernel 中注入 **25 真 bug + 45 诱饵**，涵盖多种 bug 类型：
+在 PyTorch 源码的多个 CUDA kernel 中注入 **35 真 bug + 60 诱饵**，涵盖多种 bug 类型：
 - **删除型**：删除 `__syncthreads`，导致竞争条件
 - **条件触发型**：只在特定输入下触发（方差范围、blockIdx 等）
 - **数值精度型**：微小的缩放/偏移，不崩溃但影响训练质量
@@ -25,15 +25,32 @@
 
 | 类型 | 数量 | 说明 |
 |------|------|------|
-| 删除型 | 6 | 删除 `__syncthreads`（LN/GN/BN/SoftMax） |
+| 删除型 | 16 | 删除 `__syncthreads`（LN×8 / SoftMax×7 / GN×1），破坏 cross-warp 归约 |
 | 条件触发型 | 11 | 符号翻转、均值偏移、eps 放大等 |
 | 数值精度型 | 6 | Dropout scale、Gelu x_cube、PReLU 缩放、BN running_var 等 |
 | 跨 kernel 依赖型 | 2 | 依赖 `_ln_flag` 标志位 |
-| **真 bug 合计** | **25** | 见 `solution/generate_per_bug_patches.py::BUGS` |
+| **真 bug 合计** | **35** | 见 `solution/generate_per_bug_patches.py::BUGS` |
 | `_ln_flag` 声明 | 12 | 跨 kernel bug 的 extern 符号，修复后留存为死代码 |
-| 陷阱诱饵 | 7 | `* T_ACC(1)`、`&& true`，恒等变换，删了不出错 |
+| 陷阱诱饵 | 7 | `* T_ACC(1)`、`&& true`，恒等变换 |
 | 普通诱饵 | 26 | 声明未使用变量、可疑注释 |
-| **诱饵合计** | **45** | 见 `solution/generate_decoys.py` |
+| 迷惑性诱饵 | 15 | 伪装成关键工具/参数的 `__device__` 函数/常量 + "移除将导致 X" 误导注释，诱导误改 |
+| **诱饵合计** | **60** | 见 `solution/generate_decoys.py` |
+
+## 判分：哑弹 bug 已"带电"
+
+`test.sh` 除端到端 CPU/CUDA 对比外，新增 **[6/8] Kernel 级带电检查**（权重 0.15），
+精确触发原本在 `.eval()` / 默认算子路径下不显现的 bug：
+
+| 子检查 | 触发的被注入路径 |
+|--------|-----------------|
+| `GELU-tanh` | `F.gelu(x, approximate='tanh')` —— tanh 近似分支（默认 erf 不触发） |
+| `spatial-softmax(dim=1)` | 4D `F.softmax(dim=1)` 前向+反向 —— `spatialBlockReduceX` |
+| `softmax-bwd(2D large)` | `dim_size>1024` 反向 —— `blockReduce` |
+| `BN-train-running_stats` | `.train()` 下 BatchNorm running_var 更新 |
+| `BN-eval-invstd` | eval + 小方差，放大 eps 错误 |
+| `Dropout-train-scale` | `training=True` 的缩放系数 |
+
+`model.py` 同步把两处 `nn.GELU()` 改为 `nn.GELU(approximate='tanh')`，使 GELU bug 端到端也带电。
 
 ## 注入方式：unified diff patch（与 task4 一致）
 

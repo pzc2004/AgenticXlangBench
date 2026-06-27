@@ -1,0 +1,10 @@
+--- a/aten/src/ATen/native/cuda/layer_norm_kernel.cu
++++ b/aten/src/ATen/native/cuda/layer_norm_kernel.cu
+@@ -462,7 +462,6 @@
+     reduce_buf[0] = stats_x1;
+     reduce_buf[1] = stats_x2;
+   }
+-  __syncthreads();
+   stats_x1 = reduce_buf[0];
+   stats_x2 = reduce_buf[1];
+ 

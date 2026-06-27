@@ -1,0 +1,11 @@
+--- a/aten/src/ATen/native/cuda/SoftMax.cu
++++ b/aten/src/ATen/native/cuda/SoftMax.cu
+@@ -418,8 +418,6 @@
+     }
+   }
+ 
+-  __syncthreads();
+-
+   // First thread will perform a reduction of the above per-warp reductions
+   AccumT blockVal = defaultVal;
+ 
