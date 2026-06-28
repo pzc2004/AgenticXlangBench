@@ -48,6 +48,9 @@ bug 代码执行(CUDA kernel / C++ / Rust)
 | 旧：instruction "≥0.6 即过" | 0.85 | 111 | 到 0.85 即收工（satisficer） |
 | 改：instruction "尽力满分" + 教 CPU-vs-CUDA/多warp/竞态 提示 | **1.00** | 235 | 一路爬到 1.0，自己补回 SoftMax 三处 `__syncthreads` |
 | 再改：**删掉方法提示**，只留"冲满分"动机 | **0.88** | 436 | 卡 0.88（连刷 12 次 grade 上不去），最难那簇啃不下 |
+| 同上配置 + **时限 1h→3h（max-history 镜像已生效）** | **0.9706** | 500（撞 step 上限） | 久卡 0.88 后突破到 0.91→0.94→0.97，仅剩 SoftMax 2D 多 warp 归约删 sync 那 1 个 kernel |
+
+**追加发现（2026-06-28 重建镜像实测）**：**时限是个大杠杆** —— 同样"去提示"配置，1h 卡 0.88，给到 3h / 500 步后 kimi 一路啃到 **0.97**，只剩 1 个 kernel（`softmax:2d_C2048` 删 `__syncthreads` 簇）。说明现难度对充足预算 agent 偏低。oracle 复测 buggy 0.10 / fixed 1.0，`history.log` 累积正确，**max-history 计分已在重建镜像上验证生效**。
 
 **结论**：
 1. **"≥0.6 即过"是 satisficer 陷阱** —— agent 够分就停，白白放掉难 bug。改成"目标满分、不到 1.0 继续"才逼出真实能力。
@@ -58,27 +61,32 @@ bug 代码执行(CUDA kernel / C++ / Rust)
 - **max-history 计分**：test.sh 每次落分追加到受保护 `/logs/verifier/history.log`（root:700，agent 不可伪造），run.sh 末取 `sort -g | tail -1` 当 reward + 保留一次兜底重跑。**agent 中途到过高分、末态被打断/改坏时按最佳验证状态计分**。代价：对 flaky 竞态 bug 的 max 可能虚高，靠 `REP=8` 压低。（详见 `skills/generate-task.md` "max-history 计分"、`skills/anti-hack.md` #8）
 - **timeout 默认 1h → 3h**（冲满分要多迭代 + 重编译）。
 
-### 2026-06-28： Task 4 protected grading 完成，Kimi 0.10
+### 2026-06-28：Task 4 同步 max-history 计分 + 重建镜像 + Kimi 复测
 
-**Task 1 (PyTorch CUDA)**:
-- Bug 数量：3 → **25+ 真 bug + 40+ 诱饵**
-- 新增删除型 bug（删 `__syncthreads`，最难发现）
-- 新增陷阱诱饵（`&& True`、`assert`，修了反而有害）
-- Oracle 测试通过：Buggy 0.15, Fixed 1.0
-- Kimi 测试：91 步修完（用"霰弹枪策略"）
+**本次改动**：
+- `task/tests/test.sh` 每次判分同时写入 `/logs/verifier/history.log`（受保护 root:700），与 task1 保持一致。
+- `run.sh` 最终 reward 改为取 `sort -g history.log | tail -1` 的历史最高分，并保留一次兜底重跑。
+- 重建 `task4` 镜像，protected grading 与 max-history 同时生效。
 
-**Task 4 (JAX vmap)**：
-- Bug 数量：2 → **26 真 bug + 11 诱饵**（诱饵后续可扩到 30+）
-- 新增删除型 bug（删 early return、条件检查）
-- 新增 AD/Linearize Zero tangent 类 bug（JVP/VJP/linearize 路径触发）
-- inject_bug.py 支持 `--reverse`，solve.sh 直接调用；注入校验升级为 `patch -F0 + marker + .rej` 检查
+**Task 4 当前状态**：
+- Bug 数量：**26 真 bug + 11 诱饵**
+- inject_bug.py 支持 `--reverse`，solve.sh 直接调用
 - 启用 **protected grading**：非 root agent、`/opt/judge` root-only、`grade` setuid、空目录覆盖 `/task/solution`
-- 新增 `analyze_trajectory.py` 轨迹分析工具
 - Oracle 测试通过：Buggy 0.10, Fixed 1.0
 - Per-bug Oracle：**26/26 全部通过**
-- Kimi 测试：
-  - 未加 protected grading：~10 步 reward **1.0**（agent 直接读 `bugs.patch` 作弊）
-  - 加 protected grading + 3600s：341 turns reward **0.10**，9/26 真 bug 修对，被迫 timeout 停止
+
+**Kimi 复测（seed 42，预算 \$20，超时 3h）**：
+
+| 指标 | 结果 |
+|---|---|
+| Reward | 0.10 |
+| Turns | 500（撞 step 上限） |
+| Tool calls | 500 |
+
+**结论**：
+- max-history 计分机制已部署，但本次 agent 中途未突破 0.10，最终按兜底 test 的 0.10 计分。
+- Kimi 在 500 步内未能有效修复 JAX vmap batching bug，轨迹里主要是 shape/broadcasting 类报错（如 `Batching rule for 'iota' not implemented`、多处 `incompatible shapes for broadcasting`）。
+- task4 当前对 Kimi 明显偏难，后续需校准（加提示 / 减少 bug / 优化 instruction）。
 
 **关键发现**：
 1. 删除代码比添加代码更难被 agent 发现

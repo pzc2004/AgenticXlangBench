@@ -122,13 +122,16 @@ docker commit "$CONTAINER_NAME" "$SNAPSHOT_IMAGE" > /dev/null 2>&1
 docker rm -f "$CONTAINER_NAME" > /dev/null 2>&1
 rm -rf "$EMPTY_SOLUTION_DIR"
 
-echo ">>> 运行测试（受保护的最终判分，root 跑镜像内 /opt/judge/test.sh）..."
+echo ">>> 运行最终判分（root 跑兜底 test + 取运行全程历史最高分）..."
+# 最终 reward = 运行期间所有 grade(含本次兜底)写入受保护 history.log 的分数最大值。
+# 这样即便 agent 中途到过高分、最后被打断或改坏，也按它验证过的最佳状态计分。
+# history.log 在 /logs(root:700)，agent 无法伪造；兜底 test 覆盖"agent 从没跑过 grade"的情况。
 docker run --rm --gpus all --user 0 \
   -v "$TASK_DIR/workspace:/workspace:ro" \
   "$SNAPSHOT_IMAGE" \
   bash -c "
     bash /opt/judge/test.sh 2>/dev/null || true
-    cat /logs/verifier/reward.txt 2>/dev/null || echo '0.0'
+    sort -g /logs/verifier/history.log 2>/dev/null | tail -1 || echo '0.0'
   " > "$TRAJ_DIR/reward.txt" 2>/dev/null || true
 
 docker rmi "$SNAPSHOT_IMAGE" > /dev/null 2>&1 || true

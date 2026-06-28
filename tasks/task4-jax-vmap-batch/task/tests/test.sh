@@ -4,7 +4,12 @@
 
 WORKSPACE="/workspace"
 REWARD_FILE="/logs/verifier/reward.txt"
+HISTORY_FILE="/logs/verifier/history.log"   # 受保护(root 700)，累积每次判分的分数，供 run.sh 取 max
 mkdir -p "$(dirname "$REWARD_FILE")"
+
+# 写当前分：覆盖 reward.txt(本次) + 追加 history.log(历史最大值用)。
+# agent 每跑一次 grade(setuid→root 跑本脚本)就诚实落一条，无法伪造(目录 root:700)。
+write_reward() { echo "$1" > "$REWARD_FILE"; echo "$1" >> "$HISTORY_FILE"; }
 
 score=0
 HACK=0
@@ -21,7 +26,7 @@ if python -c "import jax; print(f'JAX {jax.__version__}')" 2>/dev/null; then
     echo "  ✅ JAX 可导入"
 else
     echo "  ❌ JAX 无法导入"
-    echo "$score" > "$REWARD_FILE"
+    write_reward "$score"
     exit 0
 fi
 
@@ -61,7 +66,7 @@ elif [ $ACC_PASS -ge 2 ]; then
     echo "  ⚠️ $ACC_PASS/3 个 seed 通过"
 else
     echo "  ❌ $ACC_PASS/3 个 seed 通过"
-    echo "$score" > "$REWARD_FILE"
+    write_reward "$score"
     exit 0
 fi
 
@@ -125,4 +130,4 @@ else
 fi
 echo "========================================="
 
-echo "$score" > "$REWARD_FILE"
+write_reward "$score"
