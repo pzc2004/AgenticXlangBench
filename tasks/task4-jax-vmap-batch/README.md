@@ -1,4 +1,8 @@
 # Task 4： JAX Batching Rule 错误 → vmap+grad 梯度错误
+> ✅ **状态：可交付**
+>
+> 镜像、Oracle、`run.sh` / `calibrate.sh` 已跑通，可直接用于评测。
+
 
 ## 概述
 
@@ -178,6 +182,13 @@ Agent 运行时：
 grade
 ```
 
+Kimi 测试：
+
+```bash
+cd tasks/task4-jax-vmap-batch
+./run.sh kimi-code/kimi-for-coding 10 42 10800
+```
+
 开发/oracle 用（需 root + 挂载 solution）：
 
 ```bash
@@ -214,6 +225,7 @@ docker run --rm --gpus all --user 0 \
 - Oracle 结果：buggy 版 0.10，fixed 版 **1.0**。
 - Per-bug Oracle 结果：**26/26 个 bug 单独注入时均能被检测到**。
 - Protected grading 验证通过：agent（uid 1500）无法读取 `/opt/judge/test.sh`、`/task/tests/test_vmap.py`、`/task/solution/bugs.patch`。
+- **max-history 计分已同步**：`test.sh` 落分追加 `/logs/verifier/history.log`，`run.sh` 兜底取历史最高分。
 - 轨迹分析工具 `analyze_trajectory.py` 已就位，可输出：修对/漏修、难度分级、修复时间线、反 hack 行为检测。
 
 ## Kimi 测试结果
@@ -222,8 +234,9 @@ docker run --rm --gpus all --user 0 \
 |---|---|---|---|---|---|---|
 | 2026-06-27 | 未加 protected grading | **1.0** | ~10 | ~10 | 26/26 | agent 找到 `/task/solution/bugs.patch` 并用 `patch -R` 作弊 |
 | 2026-06-28 | protected grading + 3600s timeout | **0.10** | 341 | 341 | 9/26 | 无法读 patch/测试；AD/删除型/Lax offset 类 0% 修复；时间到被迫停止 |
+| 2026-06-28 | protected grading + max-history + 3h timeout | **0.10** | 500 | 500 | — | 撞 step 上限；轨迹多为 shape/broadcasting 报错，未突破 0.10 |
 
-结论：**protected grading 有效阻止作弊后，task4 对 Kimi 构成实质性难度**。
+结论：**protected grading 有效阻止作弊后，task4 对 Kimi 构成实质性难度；max-history 机制已部署，但本次未观察到中途高分。**
 
 ## 踩坑记录
 

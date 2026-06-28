@@ -1,4 +1,8 @@
 # Task 2： PyTorch Autograd 梯度符号错误 → 精度缓慢下降
+> ⚠️ **状态：骨架待完善**
+>
+> 本任务目前只有 Dockerfile / run.sh / instruction.md 骨架，`task/solution/oracle.sh` 未补齐或 `tests/test.sh` 未验证，暂不能端到端运行。可交付任务见顶层 README.md 的「任务总览」。
+
 
 ## 概述
 

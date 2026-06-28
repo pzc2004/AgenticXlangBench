@@ -17,25 +17,26 @@ bug 代码执行(CUDA kernel / C++ / Rust)
 
 ## 任务总览
 
-| # | 任务 | Bug 层 | 症状 | 延迟机制 | 语言 |
-|---|---|---|---|---|---|
-| 1 | PyTorch CUDA index | CUDA | 训练 NaN | 累积误差 | Python+CUDA |
-| 2 | PyTorch autograd sign | C++ | accuracy↓ | 累积误差 | Python+C++ |
-| 3 | NumPy BLAS register | x86 ASM | 结果偏差 | 触发条件 | Python+ASM |
-| 4 | JAX vmap batching | Python 内部 | 梯度错 | 级联传播 | Python+内部 |
-| 5 | CPython refcount | C | segfault | 概率性 | Python+C |
-| 6 | TF shape inference | C++ | shape err | 级联传播 | Python+C++ |
-| 7 | cuDNN conv backward | CUDA | 效果差 | 累积+触发 | Python+CUDA |
-| 8 | Rust FFI lifetime | Rust | segfault | 概率性 | Python+Rust |
-| 9 | PG executor NULL | C | 行数不对 | 触发条件 | SQL+C |
-| 10 | Redis module write | C | 数据乱码 | 级联传播 | Redis+C |
-| 11 | LLVM codegen | C++ | -O2 输出错 | 级联传播 | C+ASM |
-| 12 | Python GIL race | C | 偶发错 | 概率性 | Python+C |
-| 13 | OpenCV CUDA resize | CUDA | 像素偏差 | 级联传播 | Python+CUDA |
-| 14 | NumPy dtype overflow | C | 溢出 | 触发条件 | Python+C |
-| 15 | SQLite optimizer | C | 少行 | 触发条件 | SQL+C |
+| # | 任务 | Bug 层 | 症状 | 延迟机制 | 语言 | 状态 |
+|---|---|---|---|---|---|---|
+| 1 | PyTorch CUDA index | CUDA | 训练 NaN | 累积误差 | Python+CUDA | ✅ 可交付 |
+| 2 | PyTorch autograd sign | C++ | accuracy↓ | 累积误差 | Python+C++ | ⚠️ 骨架待完善 |
+| 3 | NumPy BLAS register | x86 ASM | 结果偏差 | 触发条件 | Python+ASM | ⚠️ 骨架待完善 |
+| 4 | JAX vmap batching | Python 内部 | 梯度错 | 级联传播 | Python+内部 | ✅ 可交付 |
+| 5 | CPython refcount | C | segfault | 概率性 | Python+C | ⚠️ 骨架待完善 |
+| 6 | TF shape inference | C++ | shape err | 级联传播 | Python+C++ | ⚠️ 骨架待完善 |
+| 7 | cuDNN conv backward | CUDA | 效果差 | 累积+触发 | Python+CUDA | ⚠️ 骨架待完善 |
+| 8 | Rust FFI lifetime | Rust | segfault | 概率性 | Python+Rust | ⚠️ 骨架待完善 |
+| 9 | PG executor NULL | C | 行数不对 | 触发条件 | SQL+C | ⚠️ 骨架待完善 |
+| 10 | Redis module write | C | 数据乱码 | 级联传播 | Redis+C | ⚠️ 骨架待完善 |
+| 11 | LLVM codegen | C++ | -O2 输出错 | 级联传播 | C+ASM | ⚠️ 骨架待完善 |
+| 12 | Python GIL race | C | 偶发错 | 概率性 | Python+C | ⚠️ 骨架待完善 |
+| 13 | OpenCV CUDA resize | CUDA | 像素偏差 | 级联传播 | Python+CUDA | ⚠️ 骨架待完善 |
+| 14 | NumPy dtype overflow | C | 溢出 | 触发条件 | Python+C | ⚠️ 骨架待完善 |
+| 15 | SQLite optimizer | C | 少行 | 触发条件 | SQL+C | ⚠️ 骨架待完善 |
 
-每道题的详细设计(bug 类型 / 延迟机制 / 为什么难 / anti-hack 措施 / oracle)见各任务目录下的 `README.md`。
+- **✅ 可交付**：镜像、Oracle、`run.sh` / `calibrate.sh` 已跑通，可直接用于评测。
+- **⚠️ 骨架待完善**：有 Dockerfile / `run.sh` / `instruction.md` 骨架，但 `task/solution/oracle.sh` 未补齐或测试未验证，暂不能端到端运行。
 
 ## 最新进展
 
@@ -110,25 +111,48 @@ bug 代码执行(CUDA kernel / C++ / Rust)
 
 ## 快速开始
 
+目前只有 **task1** 和 **task4** 可完整跑通（镜像、Oracle、`run.sh` / `calibrate.sh` 已验证）。其余任务为骨架状态，需补齐 `task/solution/oracle.sh` 并验证 `tests/test.sh` 后才能使用。
+
+### 1. 构建镜像
+
 ```bash
-# 进入项目目录
 cd <项目路径>
 
-# 构建镜像
-docker build --no-cache -t task1 -f tasks/task1-pytorch-cuda-index/task/environment/Dockerfile .
-docker build --no-cache -t task4 -f tasks/task4-jax-vmap-batch/task/environment/Dockerfile .
+# task1
+DOCKER_BUILDKIT=1 docker build \
+  --secret id=ssh_key,src=.secrets/id_rsa \
+  -t task1 -f tasks/task1-pytorch-cuda-index/task/environment/Dockerfile .
 
-# Oracle 测试
-./test_oracle.sh task1
-./test_oracle.sh task4
-
-# Kimi 测试
-cd tasks/task1-pytorch-cuda-index && ./run.sh
-cd tasks/task4-jax-vmap-batch && ./run.sh
-
-# 校准难度(3 模型 × 3 seed)
-./calibrate.sh 10
+# task4
+DOCKER_BUILDKIT=1 docker build \
+  --secret id=ssh_key,src=.secrets/id_rsa \
+  -t task4 -f tasks/task4-jax-vmap-batch/task/environment/Dockerfile .
 ```
+
+### 2. Oracle 测试
+
+各任务的 Oracle 脚本在 `task/solution/oracle.sh`，需在挂载 solution 的容器内运行（详见各任务 `README.md` 的「测试命令」小节）。
+
+### 3. Kimi 测试
+
+```bash
+cd tasks/task1-pytorch-cuda-index
+./run.sh kimi-code/kimi-for-coding 10 42 10800
+
+cd tasks/task4-jax-vmap-batch
+./run.sh kimi-code/kimi-for-coding 10 42 10800
+```
+
+参数顺序：`模型名 预算(seed) 超时(秒)`。注意模型名需写完整 `kimi-code/kimi-for-coding`，只写 `kimi-for-coding` 会导致 config 不匹配。
+
+### 4. 校准难度
+
+```bash
+cd tasks/task1-pytorch-cuda-index
+./calibrate.sh kimi-code/kimi-for-coding 10 3 10800
+```
+
+参数：`模型名 单次预算 运行次数 单次超时`。
 
 ## 项目架构
 
@@ -187,8 +211,15 @@ docker build --no-cache -t task1 \
 
 #### 3. Oracle 测试
 
+以 task1 为例（task4 类似，详见各任务 `README.md`）：
+
 ```bash
-./test_oracle.sh task1
+# 启动容器并挂载 solution（开发/验证时用）
+docker run --rm --gpus all \
+  -v "$PWD/tasks/task1-pytorch-cuda-index/task/workspace:/workspace:ro" \
+  -v "$PWD/tasks/task1-pytorch-cuda-index/task/solution:/task/solution:ro" \
+  -v "$PWD/tasks/task1-pytorch-cuda-index/task/tests:/task/tests:ro" \
+  task1 bash /task/solution/oracle.sh
 ```
 
 **流程**：
@@ -380,20 +411,6 @@ agentic-xlang-bugfix/
 | Mutation testing | 防"测试套件本身弱" |
 
 详见 `skills/anti-hack.md`。
-
-## 反 Reward Hack
-
-每道题的 `tests/test.sh` 包含多层反 hack 检查：
-
-| 检查 | 防什么 |
-|---|---|
-| 多 seed / 多参数测试 | 防"只过一个 case" |
-| 性能回归测试 | 防"CPU 回退绕过 CUDA bug" |
-| diff 只允许底层文件 | 防"改 Python 不改 C++" |
-| 静态分析(isnan / try/catch) | 防"Python 层打补丁掩盖" |
-| Mutation testing | 防"测试套件本身弱" |
-
-详见 `OVERVIEW.md` §6。
 
 ## 选题策略
 

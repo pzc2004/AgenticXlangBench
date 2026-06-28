@@ -1,4 +1,8 @@
 # Task 1： PyTorch CUDA 复合 Bug → 训练异常
+> ✅ **状态：可交付**
+>
+> 镜像、Oracle、`run.sh` / `calibrate.sh` 已跑通，可直接用于评测。
+
 
 ## 概述
 
@@ -175,11 +179,14 @@ docker build -t task1 \
 
 ```bash
 # Oracle 测试（验证 bug 有效 + 修复后通过）
-./test_oracle.sh task1
+docker run --rm --gpus all \
+  -v "$PWD/task/workspace:/workspace:ro" \
+  -v "$PWD/task/solution:/task/solution:ro" \
+  -v "$PWD/task/tests:/task/tests:ro" \
+  task1 bash /task/solution/oracle.sh
 
 # Kimi 测试
-cd tasks/task1-pytorch-cuda-index
-./run.sh
+./run.sh kimi-code/kimi-for-coding 10 42 10800
 ```
 
 ## Anti-hack 措施
